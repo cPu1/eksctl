@@ -485,6 +485,9 @@ type ClusterConfig struct {
 
 	// NodeGroups For information and examples see [nodegroups](/usage/managing-nodegroups)
 	// +optional
+	PrivateCluster *PrivateCluster `json:"privateCluster,omitempty"`
+
+	// +optional
 	NodeGroups []*NodeGroup `json:"nodeGroups,omitempty"`
 
 	// ManagedNodeGroups See [Nodegroups usage](/usage/managing-nodegroups)
@@ -1085,4 +1088,10 @@ type FargateProfileSelector struct {
 // SecretsEncryption defines the configuration for KMS encryption provider
 type SecretsEncryption struct {
 	KeyARN *string `json:"keyARN,omitempty" jsonschema:"required"`
+}
+
+// PrivateCluster defines the config for a private cluster
+type PrivateCluster struct {
+	Enabled                    bool     `json:"enabled"`
+	AdditionalEndpointServices []string `json:"additionalEndpointServices"`
 }
