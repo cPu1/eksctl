@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/weaveworks/eksctl/pkg/cfn/manager"
 	"github.com/weaveworks/eksctl/pkg/eks"
-	"github.com/weaveworks/eksctl/pkg/ssh"
 	"github.com/weaveworks/eksctl/pkg/utils/names"
 	"github.com/weaveworks/eksctl/pkg/vpc"
 
@@ -136,22 +135,10 @@ func doCreateNodeGroups(cmd *cmdutils.Cmd, ng *api.NodeGroup, params createNodeG
 			return err
 		}
 		logger.Info("nodegroup %q will use %q [%s/%s]", ng.Name, ng.AMI, ng.AMIFamily, cfg.Metadata.Version)
-
-		// load or use SSH key - name includes cluster name and the
-		// fingerprint, so if unique keys provided, each will get
-		// loaded and used as intended and there is no need to have
-		// nodegroup name in the key name
-		publicKeyName, err := ssh.LoadKey(ng.SSH, meta.Name, ng.Name, ctl.Provider.EC2())
-		if err != nil {
-			return err
-		}
-		if publicKeyName != "" {
-			ng.SSH.PublicKeyName = &publicKeyName
-		}
 	}
 
 	managedService := eks.NewNodeGroupService(cfg, ctl.Provider.EC2())
-	if err := managedService.NormalizeManaged(cfg.ManagedNodeGroups); err != nil {
+	if err := managedService.NormalizeManaged(cmdutils.ToBaseNodeGroups(cfg)); err != nil {
 		return err
 	}
 
