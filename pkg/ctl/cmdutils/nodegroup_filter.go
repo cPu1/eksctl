@@ -87,10 +87,11 @@ func (f *NodeGroupFilter) SetIncludeOrExcludeMissingFilter(lister stackLister, i
 		if !local.Has(remoteNodeGroupName) {
 			logger.Info("nodegroup %q present in the cluster, but missing from the given config", s.NodeGroupName)
 			if includeOnlyMissing {
+				ngBase := &api.NodeGroupBase{Name: s.NodeGroupName}
 				if s.Type == api.NodeGroupTypeManaged {
-					clusterConfig.ManagedNodeGroups = append(clusterConfig.ManagedNodeGroups, &api.ManagedNodeGroup{Name: s.NodeGroupName})
+					clusterConfig.ManagedNodeGroups = append(clusterConfig.ManagedNodeGroups, &api.ManagedNodeGroup{NodeGroupBase: ngBase})
 				} else {
-					clusterConfig.NodeGroups = append(clusterConfig.NodeGroups, &api.NodeGroup{Name: s.NodeGroupName})
+					clusterConfig.NodeGroups = append(clusterConfig.NodeGroups, &api.NodeGroup{NodeGroupBase: ngBase})
 				}
 				// make sure it passes it through the filter, so that one can use `--only-missing` along with `--exclude`
 				if f.Match(remoteNodeGroupName) {
