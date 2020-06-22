@@ -53,6 +53,19 @@ func ToKubeNodeGroups(clusterConfig *api.ClusterConfig) []eks.KubeNodeGroup {
 	return kubeNodeGroups
 }
 
+// ToBaseNodeGroups combines managed and self-managed nodegroups and returns a slice of *api.NodeGroupBase containing
+// both types of nodegroups
+func ToBaseNodeGroups(clusterConfig *api.ClusterConfig) []*api.NodeGroupBase {
+	var baseNodeGroups []*api.NodeGroupBase
+	for _, ng := range clusterConfig.NodeGroups {
+		baseNodeGroups = append(baseNodeGroups, ng.NodeGroupBase)
+	}
+	for _, ng := range clusterConfig.ManagedNodeGroups {
+		baseNodeGroups = append(baseNodeGroups, ng.NodeGroupBase)
+	}
+	return baseNodeGroups
+}
+
 // getAllNodeGroupNames collects and returns names for both managed and unmanaged nodegroups
 func getAllNodeGroupNames(clusterConfig *api.ClusterConfig) []string {
 	var ngNames []string
