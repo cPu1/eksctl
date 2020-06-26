@@ -483,10 +483,10 @@ type ClusterConfig struct {
 	// +optional
 	VPC *ClusterVPC `json:"vpc,omitempty"`
 
-	// NodeGroups For information and examples see [nodegroups](/usage/managing-nodegroups)
 	// +optional
 	PrivateCluster *PrivateCluster `json:"privateCluster,omitempty"`
 
+	// NodeGroups For information and examples see [nodegroups](/usage/managing-nodegroups)
 	// +optional
 	NodeGroups []*NodeGroup `json:"nodeGroups,omitempty"`
 
@@ -936,9 +936,9 @@ type NodeGroupBase struct {
 	// Limit [nodes to specific
 	// AZs](/usage/autoscaling/#zone-aware-auto-scaling)
 	// +optional
-	// +optional
 	AvailabilityZones []string `json:"availabilityZones,omitempty"`
 
+	// +optional
 	*ScalingConfig
 
 	// +optional
@@ -965,7 +965,7 @@ func (n *NodeGroupBase) ListOptions() metav1.ListOptions {
 	return makeListOptions(n.Name)
 }
 
-// NameString returns common name string
+// NameString returns the nodegroup name
 func (n *NodeGroupBase) NameString() string {
 	return n.Name
 }
