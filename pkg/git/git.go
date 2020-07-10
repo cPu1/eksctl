@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/kris-nova/logger"
@@ -32,49 +31,11 @@ type ClientParams struct {
 	PrivateSSHKeyPath string
 }
 
-// Options holds options to interact with a Git repository.
-type Options struct {
-	URL               string
-	Branch            string
-	User              string
-	Email             string
-	PrivateSSHKeyPath string
-}
-
-// Validate validates this Options object.
-func (o Options) Validate() error {
-	if err := o.ValidateURL(); err != nil {
-		return err
-	}
-	if err := o.ValidateEmail(); err != nil {
-		return err
-	}
-	if err := o.ValidatePrivateSSHKeyPath(); err != nil {
-		return err
-	}
-	return nil
-}
-
-// ValidateURL validates the URL field of this Options object, returning an
-// error should the current value not be valid.
-func (o Options) ValidateURL() error {
-	return ValidateURL(o.URL)
-}
-
-// ValidateEmail validates the email field of this Options object, return an
-// error should the current value not be valid.
-func (o Options) ValidateEmail() error {
-	if o.Email == "" {
-		return errors.New("empty email address")
-	}
-	return nil
-}
-
 // ValidatePrivateSSHKeyPath validates the path to the (optional) private SSH
 // key used to interact with the Git repository configured in this object.
-func (o Options) ValidatePrivateSSHKeyPath() error {
-	if o.PrivateSSHKeyPath != "" && !file.Exists(o.PrivateSSHKeyPath) {
-		return fmt.Errorf("invalid path to private SSH key: %s", o.PrivateSSHKeyPath)
+func ValidatePrivateSSHKeyPath(privateSSHKeyPath string) error {
+	if privateSSHKeyPath != "" && !file.Exists(privateSSHKeyPath) {
+		return fmt.Errorf("invalid path to private SSH key: %s", privateSSHKeyPath)
 	}
 	return nil
 }
@@ -89,6 +50,9 @@ func NewGitClient(params ClientParams) *Client {
 func envVars(params ClientParams) []string {
 	envVars := []string{
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
+	}
+	if sshAuthSock, ok := os.LookupEnv("SSH_AUTH_SOCK"); ok {
+		envVars = append(envVars, fmt.Sprintf("SSH_AUTH_SOCK=%s", sshAuthSock))
 	}
 	if params.PrivateSSHKeyPath != "" {
 		envVars = append(envVars, fmt.Sprintf("GIT_SSH_COMMAND=ssh -i %s", params.PrivateSSHKeyPath))
@@ -142,11 +106,7 @@ func (git *Client) cloneRepoInPath(clonePath string, options CloneOptions) error
 		// Switch to target branch
 		args := []string{"checkout", options.Branch}
 		if options.Bootstrap {
-			empty, err := git.isRepoEmpty()
-			if err != nil {
-				return err
-			}
-			if empty {
+			if !git.isRemoteBranch(options.Branch) {
 				args = []string{"checkout", "-b", options.Branch}
 			}
 		}
@@ -158,13 +118,9 @@ func (git *Client) cloneRepoInPath(clonePath string, options CloneOptions) error
 	return nil
 }
 
-func (git *Client) isRepoEmpty() (bool, error) {
-	// A repository is empty if it doesn't have branches
-	files, err := ioutil.ReadDir(filepath.Join(git.dir, ".git", "refs", "heads"))
-	if err != nil {
-		return false, err
-	}
-	return len(files) == 0, nil
+func (git *Client) isRemoteBranch(branch string) bool {
+	err := git.runGitCmd("ls-remote", "--heads", "--exit-code", "origin", branch)
+	return err == nil
 }
 
 // Add performs can perform a `git add` operation on the given file paths
@@ -220,6 +176,9 @@ func (git Client) Commit(message, user, email string) error {
 
 // Push pushes the changes to the origin remote
 func (git Client) Push() error {
+	if err := git.runGitCmd("config", "push.default", "current"); err != nil {
+		return err
+	}
 	err := git.runGitCmd("push")
 	return err
 }

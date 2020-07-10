@@ -12,8 +12,8 @@ import (
 	"github.com/weaveworks/eksctl/pkg/testutils"
 	"github.com/weaveworks/eksctl/pkg/utils/names"
 	"github.com/weaveworks/eksctl/pkg/utils/retry"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kubeclient "k8s.io/client-go/kubernetes"
@@ -115,17 +115,17 @@ var _ = Describe("coredns", func() {
 	})
 
 	Describe("ScheduleOnFargate", func() {
-		It("should set the compute-type annotation should have been set to 'fargate'", func() {
+		It("should set the compute-type annotation to 'fargate'", func() {
 			// Given:
 			mockClientset := mockClientsetWith(deployment("ec2", 0, 2))
-			deployment, err := mockClientset.ExtensionsV1beta1().Deployments(coredns.Namespace).Get(coredns.Name, metav1.GetOptions{})
+			deployment, err := mockClientset.AppsV1().Deployments(coredns.Namespace).Get(coredns.Name, metav1.GetOptions{})
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue(coredns.ComputeTypeAnnotationKey, "ec2"))
 			// When:
 			err = coredns.ScheduleOnFargate(mockClientset)
 			Expect(err).To(Not(HaveOccurred()))
 			// Then:
-			deployment, err = mockClientset.ExtensionsV1beta1().Deployments(coredns.Namespace).Get(coredns.Name, metav1.GetOptions{})
+			deployment, err = mockClientset.AppsV1().Deployments(coredns.Namespace).Get(coredns.Name, metav1.GetOptions{})
 			Expect(err).To(Not(HaveOccurred()))
 			Expect(deployment.Spec.Template.Annotations).To(HaveKeyWithValue(coredns.ComputeTypeAnnotationKey, "fargate"))
 		})
@@ -164,23 +164,24 @@ var _ = Describe("coredns", func() {
 			}
 		})
 	})
+
 })
 
 func mockClientsetWith(objects ...runtime.Object) kubeclient.Interface {
 	return fake.NewSimpleClientset(objects...)
 }
 
-func deployment(computeType string, numReady, numReplicas int32) *v1beta1.Deployment {
-	return &v1beta1.Deployment{
+func deployment(computeType string, numReady, numReplicas int32) *appsv1.Deployment {
+	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Deployment",
-			APIVersion: "extensions/v1beta1",
+			APIVersion: appsv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: coredns.Namespace,
 			Name:      coredns.Name,
 		},
-		Spec: v1beta1.DeploymentSpec{
+		Spec: appsv1.DeploymentSpec{
 			Replicas: &numReplicas,
 			Template: v1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
@@ -190,7 +191,7 @@ func deployment(computeType string, numReady, numReplicas int32) *v1beta1.Deploy
 				},
 			},
 		},
-		Status: v1beta1.DeploymentStatus{
+		Status: appsv1.DeploymentStatus{
 			ReadyReplicas: numReady,
 		},
 	}

@@ -1,0 +1,27 @@
+table#config {
+    font-family: monospace;
+    font-size: 13px;
+}
+table#config span.example,
+table#config span.value {
+    filter: opacity(70%);
+}
+table#config td.comment:nth-child(3) {
+    border-left: 2px solid whiteSmoke;
+}
+table#config td:first-child {
+    padding-right: 50px;
+}
+table#config td span.required a.key {
+    font-weight: bold;
+}
+table#config td .anchor:target::before {
+    margin-top: -3.4rem;
+    padding-top: 3.4rem;
+    content: "";
+    display: block;
+}
+table#config td.type {
+    filter: opacity(70%);
+    color: #999999;
+}
