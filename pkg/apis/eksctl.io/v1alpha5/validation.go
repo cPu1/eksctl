@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 
 	"k8s.io/apimachinery/pkg/util/validation"
+	kubeletapis "k8s.io/kubernetes/pkg/kubelet/apis"
 )
 
 var (
@@ -58,26 +59,29 @@ func ValidateClusterConfig(cfg *ClusterConfig) error {
 
 	// names must be unique across both managed and unmanaged nodegroups
 	ngNames := nameSet{}
-	validateNg := func(name, path string) error {
-		if name == "" {
+	validateNg := func(ng *NodeGroupBase, path string) error {
+		if ng.Name == "" {
 			return fmt.Errorf("%s.name must be set", path)
 		}
-		if _, err := ngNames.checkUnique(path+".name", name); err != nil {
+		if _, err := ngNames.checkUnique(path+".name", ng.Name); err != nil {
 			return err
+		}
+		if cfg.PrivateCluster.Enabled && !ng.PrivateNetworking {
+			return fmt.Errorf("%s.privateNetworking must be enabled for a fully-private cluster", path)
 		}
 		return nil
 	}
 
 	for i, ng := range cfg.NodeGroups {
 		path := fmt.Sprintf("nodeGroups[%d]", i)
-		if err := validateNg(ng.NameString(), path); err != nil {
+		if err := validateNg(ng.NodeGroupBase, path); err != nil {
 			return err
 		}
 	}
 
 	for i, ng := range cfg.ManagedNodeGroups {
 		path := fmt.Sprintf("managedNodeGroups[%d]", i)
-		if err := validateNg(ng.NameString(), path); err != nil {
+		if err := validateNg(ng.NodeGroupBase, path); err != nil {
 			return err
 		}
 	}
@@ -119,6 +123,27 @@ func (c *ClusterConfig) ValidateClusterEndpointConfig() error {
 	endpts := c.VPC.ClusterEndpoints
 	if NoAccess(endpts) {
 		return ErrClusterEndpointNoAccess
+	}
+	return nil
+}
+
+// ValidatePrivateCluster validates the private cluster config
+func (c *ClusterConfig) ValidatePrivateCluster() error {
+	if c.PrivateCluster.Enabled {
+		if c.VPC != nil && c.VPC.ID != "" && len(c.VPC.Subnets.Private) == 0 {
+			return errors.New("vpc.subnets.private must be specified in a fully-private cluster when a pre-existing VPC is supplied")
+		}
+		if additionalEndpoints := c.PrivateCluster.AdditionalEndpointServices; len(additionalEndpoints) > 0 {
+			if err := ValidateAdditionalEndpointServices(additionalEndpoints); err != nil {
+				return errors.Wrap(err, "invalid value in privateCluster.additionalEndpointServices")
+			}
+		}
+		if c.VPC != nil && c.VPC.ClusterEndpoints == nil {
+			c.VPC.ClusterEndpoints = &ClusterEndpoints{}
+		}
+		// public access is initially enabled to allow running operations that access the Kubernetes API
+		c.VPC.ClusterEndpoints.PublicAccess = Enabled()
+		c.VPC.ClusterEndpoints.PrivateAccess = Enabled()
 	}
 	return nil
 }
@@ -211,8 +236,10 @@ func ValidateNodeGroup(i int, ng *NodeGroup) error {
 		if ng.KubeletExtraConfig != nil {
 			return fieldNotSupported("kubeletExtraConfig")
 		}
-		if ng.PreBootstrapCommands != nil {
-			return fieldNotSupported("preBootstrapCommands")
+		if ng.AMIFamily == NodeImageFamilyBottlerocket {
+			if ng.PreBootstrapCommands != nil {
+				return fieldNotSupported("preBootstrapCommands")
+			}
 		}
 		if ng.OverrideBootstrapCommand != nil {
 			return fieldNotSupported("overrideBootstrapCommand")
@@ -233,6 +260,10 @@ func ValidateNodeGroup(i int, ng *NodeGroup) error {
 		return err
 	}
 
+	if err := validateCPUCredits(ng); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -247,54 +278,24 @@ func ValidateNodeGroupLabels(labels map[string]string) error {
 
 	unknownKubernetesLabels := []string{}
 
-	for l := range labels {
-		labelParts := strings.Split(l, "/")
+	for label := range labels {
+		labelParts := strings.Split(label, "/")
 
 		if len(labelParts) > 2 {
-			return fmt.Errorf("node label key %q is of invalid format, can only use one '/' separator", l)
+			return fmt.Errorf("node label key %q is of invalid format, can only use one '/' separator", label)
 		}
 
-		if errs := validation.IsQualifiedName(l); len(errs) > 0 {
-			return fmt.Errorf("label %q is invalid - %v", l, errs)
+		if errs := validation.IsQualifiedName(label); len(errs) > 0 {
+			return fmt.Errorf("label %q is invalid - %v", label, errs)
 		}
-		if errs := validation.IsValidLabelValue(labels[l]); len(errs) > 0 {
-			return fmt.Errorf("label %q has invalid value %q - %v", l, labels[l], errs)
+		if errs := validation.IsValidLabelValue(labels[label]); len(errs) > 0 {
+			return fmt.Errorf("label %q has invalid value %q - %v", label, labels[label], errs)
 		}
 
-		isKubernetesLabel := false
-		allowedKubeletNamespace := false
 		if len(labelParts) == 2 {
-			ns := labelParts[0]
-
-			for _, domain := range []string{"kubernetes.io", "k8s.io"} {
-				if ns == domain || strings.HasSuffix(ns, "."+domain) {
-					isKubernetesLabel = true
-				}
-			}
-
-			for _, domain := range []string{"kubelet.kubernetes.io", "node.kubernetes.io", "node-role.kubernetes.io", "alpha.service-controller.kubernetes.io"} {
-				if ns == domain || strings.HasSuffix(ns, "."+domain) {
-					allowedKubeletNamespace = true
-				}
-			}
-
-			if isKubernetesLabel && !allowedKubeletNamespace {
-				switch l {
-				case
-					"kubernetes.io/hostname",
-					"kubernetes.io/instance-type",
-					"kubernetes.io/os",
-					"kubernetes.io/arch",
-					"beta.kubernetes.io/instance-type",
-					"beta.kubernetes.io/os",
-					"beta.kubernetes.io/arch",
-					"failure-domain.beta.kubernetes.io/zone",
-					"failure-domain.beta.kubernetes.io/region",
-					"failure-domain.kubernetes.io/zone",
-					"failure-domain.kubernetes.io/region":
-				default:
-					unknownKubernetesLabels = append(unknownKubernetesLabels, l)
-				}
+			namespace := labelParts[0]
+			if isKubernetesLabel(namespace) && !kubeletapis.IsKubeletLabel(label) {
+				unknownKubernetesLabels = append(unknownKubernetesLabels, label)
 			}
 		}
 	}
@@ -303,6 +304,15 @@ func ValidateNodeGroupLabels(labels map[string]string) error {
 		return fmt.Errorf("unknown 'kubernetes.io' or 'k8s.io' labels were specified: %v", unknownKubernetesLabels)
 	}
 	return nil
+}
+
+func isKubernetesLabel(namespace string) bool {
+	for _, domain := range []string{"kubernetes.io", "k8s.io"} {
+		if namespace == domain || strings.HasSuffix(namespace, "."+domain) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateNodeGroupIAM(iam *NodeGroupIAM, value, fieldName, path string) error {
@@ -336,6 +346,9 @@ func validateNodeGroupIAM(iam *NodeGroupIAM, value, fieldName, path string) erro
 		if IsEnabled(iam.WithAddonPolicies.AppMesh) {
 			return fmtFieldConflictErr(prefix + "appMesh")
 		}
+		if IsEnabled(iam.WithAddonPolicies.AppMeshPreview) {
+			return fmtFieldConflictErr(prefix + "appMeshPreview")
+		}
 		if IsEnabled(iam.WithAddonPolicies.EBS) {
 			return fmtFieldConflictErr(prefix + "ebs")
 		}
@@ -365,7 +378,7 @@ func ValidateManagedNodeGroup(ng *ManagedNodeGroup, index int) error {
 	}
 	path := fmt.Sprintf("managedNodeGroups[%d]", index)
 	if ng.IAM != nil {
-		if err := validateNodeGroupIAM(ng.IAM, ng.IAM.InstanceRoleARN, "instanceRoleArn", path); err != nil {
+		if err := validateNodeGroupIAM(ng.IAM, ng.IAM.InstanceRoleARN, "instanceRoleARN", path); err != nil {
 			return err
 		}
 
@@ -457,6 +470,35 @@ func validateInstancesDistribution(ng *NodeGroup) error {
 	return nil
 }
 
+func validateCPUCredits(ng *NodeGroup) error {
+	isTInstance := false
+	instanceTypes := []string{ng.InstanceType}
+
+	if ng.CPUCredits == nil {
+		return nil
+	}
+
+	if ng.InstanceType == "mixed" {
+		instanceTypes = ng.InstancesDistribution.InstanceTypes
+	}
+
+	for _, instanceType := range instanceTypes {
+		if strings.HasPrefix(instanceType, "t") {
+			isTInstance = true
+		}
+	}
+
+	if !isTInstance {
+		return fmt.Errorf("cpuCredits option set for nodegroup, but it has no t2/t3 instance types")
+	}
+
+	if strings.ToLower(*ng.CPUCredits) != "unlimited" && strings.ToLower(*ng.CPUCredits) != "standard" {
+		return fmt.Errorf("cpuCredits option accepts only one of 'standard' or 'unlimited'")
+	}
+
+	return nil
+}
+
 func validateNodeGroupSSH(SSH *NodeGroupSSH) error {
 	numSSHFlagsEnabled := countEnabledFields(
 		SSH.PublicKeyPath,
@@ -504,7 +546,9 @@ func validateNodeGroupKubeletExtraConfig(kubeletConfig *InlineDocument) error {
 
 // IsWindowsImage reports whether the AMI family is for Windows
 func IsWindowsImage(imageFamily string) bool {
-	return imageFamily == NodeImageFamilyWindowsServer2019CoreContainer || imageFamily == NodeImageFamilyWindowsServer2019FullContainer
+	return imageFamily == NodeImageFamilyWindowsServer2019CoreContainer ||
+		imageFamily == NodeImageFamilyWindowsServer2019FullContainer ||
+		imageFamily == NodeImageFamilyWindowsServer1909CoreContainer
 }
 
 func validateCIDRs(cidrs []string) ([]string, error) {

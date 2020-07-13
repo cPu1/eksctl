@@ -1,4 +1,4 @@
-package cmdutils_test
+package cmdutils
 
 import (
 	"path/filepath"
@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
-	. "github.com/weaveworks/eksctl/pkg/ctl/cmdutils"
+	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils/filter"
 )
 
 var _ = Describe("cmdutils configfile", func() {
@@ -21,6 +21,7 @@ var _ = Describe("cmdutils configfile", func() {
 	}
 
 	const examplesDir = "../../../examples/"
+	const numOfExamples = 21
 
 	Context("load configfiles", func() {
 
@@ -61,7 +62,7 @@ var _ = Describe("cmdutils configfile", func() {
 
 				err := NewMetadataLoader(cmd).Load()
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(Equal(ErrCannotUseWithConfigFile(`name argument "foo-3"`).Error()))
+				Expect(err.Error()).To(Equal(ErrCannotUseWithConfigFile(`name argument`).Error()))
 
 				fs := cmd.CobraCommand.Flags()
 
@@ -77,17 +78,58 @@ var _ = Describe("cmdutils configfile", func() {
 			}
 		})
 
+		Describe("name argument", func() {
+			When("given as --name switch", func() {
+				It("succeeds", func() {
+					cfg := api.NewClusterConfig()
+					cobraCmd := newCmd()
+					name := "foo-2"
+					cobraCmd.SetArgs([]string{"--name", name})
+
+					cmd := &Cmd{
+						ClusterConfig:     cfg,
+						NameArg:           name,
+						CobraCommand:      cobraCmd,
+						ClusterConfigFile: examplesDir + "01-simple-cluster.yaml",
+						ProviderConfig:    api.ProviderConfig{},
+					}
+					l := newCommonClusterConfigLoader(cmd)
+					l.flagsIncompatibleWithConfigFile.Delete("name")
+
+					err := l.Load()
+					Expect(err).ToNot(HaveOccurred())
+				})
+			})
+			When("given as positional argument", func() {
+				It("succeeds", func() {
+					cfg := api.NewClusterConfig()
+					cmd := &Cmd{
+						ClusterConfig:     cfg,
+						NameArg:           "foo-2",
+						CobraCommand:      newCmd(),
+						ClusterConfigFile: examplesDir + "01-simple-cluster.yaml",
+						ProviderConfig:    api.ProviderConfig{},
+					}
+					l := newCommonClusterConfigLoader(cmd)
+					l.flagsIncompatibleWithConfigFile.Delete("name")
+
+					err := l.Load()
+					Expect(err).ToNot(HaveOccurred())
+				})
+			})
+		})
+
 		It("load all of example file", func() {
 			examples, err := filepath.Glob(examplesDir + "*.yaml")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(examples).To(HaveLen(20))
+			Expect(examples).To(HaveLen(numOfExamples))
 			for _, example := range examples {
 				cmd := &Cmd{
 					CobraCommand:      newCmd(),
 					ClusterConfigFile: example,
 					ClusterConfig:     api.NewClusterConfig(),
-					ProviderConfig:    &api.ProviderConfig{},
+					ProviderConfig:    api.ProviderConfig{},
 				}
 
 				err := NewMetadataLoader(cmd).Load()
@@ -120,11 +162,11 @@ var _ = Describe("cmdutils configfile", func() {
 					CobraCommand:      newCmd(),
 					ClusterConfigFile: filepath.Join(examplesDir, natTest.configFile),
 					ClusterConfig:     api.NewClusterConfig(),
-					ProviderConfig:    &api.ProviderConfig{},
+					ProviderConfig:    api.ProviderConfig{},
 				}
 
 				params := &CreateClusterCmdParams{WithoutNodeGroup: true, Managed: false}
-				Expect(NewCreateClusterLoader(cmd, NewNodeGroupFilter(), nil, params).Load()).To(Succeed())
+				Expect(NewCreateClusterLoader(cmd, filter.NewNodeGroupFilter(), nil, params).Load()).To(Succeed())
 				cfg := cmd.ClusterConfig
 				Expect(cfg.VPC.NAT.Gateway).To(Not(BeNil()))
 				Expect(*cfg.VPC.NAT.Gateway).To(Equal(natTest.expectedGateway))
@@ -170,10 +212,10 @@ var _ = Describe("cmdutils configfile", func() {
 				cmd := &Cmd{
 					CobraCommand:   newCmd(),
 					ClusterConfig:  api.NewClusterConfig(),
-					ProviderConfig: &api.ProviderConfig{},
+					ProviderConfig: api.ProviderConfig{},
 				}
 
-				ngFilter := NewNodeGroupFilter()
+				ngFilter := filter.NewNodeGroupFilter()
 
 				Expect(cmd.ClusterConfig.NodeGroups).To(HaveLen(0))
 
@@ -183,7 +225,7 @@ var _ = Describe("cmdutils configfile", func() {
 				}
 				Expect(NewCreateClusterLoader(cmd, ngFilter, loaderTest.ng, params).Load()).To(Succeed())
 
-				Expect(ngFilter.ExcludeAll).To(Equal(loaderTest.withoutNodeGroup))
+				Expect(ngFilter.GetExcludeAll()).To(Equal(loaderTest.withoutNodeGroup))
 
 				if loaderTest.withoutNodeGroup {
 					Expect(cmd.ClusterConfig.NodeGroups).To(HaveLen(0))
@@ -234,10 +276,10 @@ var _ = Describe("cmdutils configfile", func() {
 					CobraCommand:      newCmd(),
 					ClusterConfigFile: filepath.Join(examplesDir, loaderTest.configFile),
 					ClusterConfig:     api.NewClusterConfig(),
-					ProviderConfig:    &api.ProviderConfig{},
+					ProviderConfig:    api.ProviderConfig{},
 				}
 
-				ngFilter := NewNodeGroupFilter()
+				ngFilter := filter.NewNodeGroupFilter()
 
 				params := &CreateClusterCmdParams{
 					WithoutNodeGroup: loaderTest.withoutNodeGroup,
@@ -245,7 +287,7 @@ var _ = Describe("cmdutils configfile", func() {
 				}
 				Expect(NewCreateClusterLoader(cmd, ngFilter, nil, params).Load()).To(Succeed())
 
-				Expect(ngFilter.ExcludeAll).To(Equal(loaderTest.withoutNodeGroup))
+				Expect(ngFilter.GetExcludeAll()).To(Equal(loaderTest.withoutNodeGroup))
 
 				if loaderTest.managed {
 					Expect(cmd.ClusterConfig.ManagedNodeGroups).To(HaveLen(loaderTest.nodeGroupCount))
@@ -268,7 +310,7 @@ var _ = Describe("cmdutils configfile", func() {
 					CobraCommand:      newCmd(),
 					ClusterConfigFile: configFilePath,
 					ClusterConfig:     api.NewClusterConfig(),
-					ProviderConfig:    &api.ProviderConfig{},
+					ProviderConfig:    api.ProviderConfig{},
 				}
 
 				params := &CreateClusterCmdParams{
@@ -276,7 +318,7 @@ var _ = Describe("cmdutils configfile", func() {
 					Managed:          false,
 				}
 
-				Expect(NewCreateClusterLoader(cmd, NewNodeGroupFilter(), nil, params).Load()).To(Succeed())
+				Expect(NewCreateClusterLoader(cmd, filter.NewNodeGroupFilter(), nil, params).Load()).To(Succeed())
 				cfg := cmd.ClusterConfig
 				assertValidClusterEndpoint(cfg.VPC.ClusterEndpoints, expectedPrivAccess, expectedPubAccess)
 			}

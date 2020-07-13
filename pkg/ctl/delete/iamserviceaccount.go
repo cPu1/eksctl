@@ -9,11 +9,18 @@ import (
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils"
+	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils/filter"
 	"github.com/weaveworks/eksctl/pkg/kubernetes"
 	"github.com/weaveworks/eksctl/pkg/printers"
 )
 
 func deleteIAMServiceAccountCmd(cmd *cmdutils.Cmd) {
+	deleteIAMServiceAccountCmdWithRunFunc(cmd, func(cmd *cmdutils.Cmd, serviceAccount *api.ClusterIAMServiceAccount, onlyMissing bool) error {
+		return doDeleteIAMServiceAccount(cmd, serviceAccount, onlyMissing)
+	})
+}
+
+func deleteIAMServiceAccountCmdWithRunFunc(cmd *cmdutils.Cmd, runFunc func(cmd *cmdutils.Cmd, serviceAccount *api.ClusterIAMServiceAccount, onlyMissing bool) error) {
 	cfg := api.NewClusterConfig()
 	cmd.ClusterConfig = cfg
 
@@ -27,7 +34,8 @@ func deleteIAMServiceAccountCmd(cmd *cmdutils.Cmd) {
 	cmd.SetDescription("iamserviceaccount", "Delete an IAM service account", "")
 
 	cmd.CobraCommand.RunE = func(_ *cobra.Command, args []string) error {
-		return doDeleteIAMServiceAccount(cmd, serviceAccount, onlyMissing)
+		cmd.NameArg = cmdutils.GetNameArg(args)
+		return runFunc(cmd, serviceAccount, onlyMissing)
 	}
 
 	cmd.FlagSetGroup.InFlagSet("General", func(fs *pflag.FlagSet) {
@@ -39,7 +47,7 @@ func deleteIAMServiceAccountCmd(cmd *cmdutils.Cmd) {
 		cmdutils.AddIAMServiceAccountFilterFlags(fs, &cmd.Include, &cmd.Exclude)
 		fs.BoolVar(&onlyMissing, "only-missing", false, "Only delete nodegroups that are not defined in the given config file")
 		cmdutils.AddApproveFlag(fs, cmd)
-		cmdutils.AddRegionFlag(fs, cmd.ProviderConfig)
+		cmdutils.AddRegionFlag(fs, &cmd.ProviderConfig)
 		cmdutils.AddConfigFileFlag(fs, &cmd.ClusterConfigFile)
 
 		cmd.Wait = false
@@ -47,11 +55,11 @@ func deleteIAMServiceAccountCmd(cmd *cmdutils.Cmd) {
 		cmdutils.AddTimeoutFlag(fs, &cmd.ProviderConfig.WaitTimeout)
 	})
 
-	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, cmd.ProviderConfig, true)
+	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, &cmd.ProviderConfig, true)
 }
 
 func doDeleteIAMServiceAccount(cmd *cmdutils.Cmd, serviceAccount *api.ClusterIAMServiceAccount, onlyMissing bool) error {
-	saFilter := cmdutils.NewIAMServiceAccountFilter()
+	saFilter := filter.NewIAMServiceAccountFilter()
 
 	if err := cmdutils.NewDeleteIAMServiceAccountLoader(cmd, serviceAccount, saFilter).Load(); err != nil {
 		return err
@@ -108,7 +116,7 @@ func doDeleteIAMServiceAccount(cmd *cmdutils.Cmd, serviceAccount *api.ClusterIAM
 
 	saSubset, _ := saFilter.MatchAll(cfg.IAM.ServiceAccounts)
 
-	tasks, err := stackManager.NewTasksToDeleteIAMServiceAccounts(saSubset.Has, oidc, kubernetes.NewCachedClientSet(clientSet), cmd.Wait)
+	tasks, err := stackManager.NewTasksToDeleteIAMServiceAccounts(saSubset.Has, kubernetes.NewCachedClientSet(clientSet), cmd.Wait)
 	if err != nil {
 		return err
 	}

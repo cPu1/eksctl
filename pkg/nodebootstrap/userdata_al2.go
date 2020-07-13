@@ -11,7 +11,7 @@ import (
 )
 
 func makeAmazonLinux2Config(spec *api.ClusterConfig, ng *api.NodeGroup) (configFiles, error) {
-	clientConfigData, err := makeClientConfigData(spec, ng, kubeconfig.AWSEKSAuthenticator)
+	clientConfigData, err := makeClientConfigData(spec, kubeconfig.AWSEKSAuthenticator)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func makeAmazonLinux2Config(spec *api.ClusterConfig, ng *api.NodeGroup) (configF
 		},
 		configDir: {
 			"metadata.env": {content: strings.Join(makeMetadata(spec), "\n")},
-			"kubelet.env":  {content: strings.Join(makeCommonKubeletEnvParams(spec, ng), "\n")},
+			"kubelet.env":  {content: strings.Join(makeCommonKubeletEnvParams(ng), "\n")},
 			"kubelet.yaml": {content: string(kubeletConfigData)},
 			// TODO: https://github.com/weaveworks/eksctl/issues/161
 			"ca.crt":          {content: string(spec.Status.CertificateAuthorityData)},
