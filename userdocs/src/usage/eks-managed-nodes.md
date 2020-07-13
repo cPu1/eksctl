@@ -162,7 +162,7 @@ eksctl get labels --cluster managed-cluster --nodegroup managed-ng-1
 the same.
 
 ```console
-eksctl scale nodegroup --name=managed-ng-1 --cluster=managed-cluster --nodes=4
+eksctl scale nodegroup --name=managed-ng-1 --cluster=managed-cluster --nodes=4 --nodes-min=3 --nodes-max=5
 ```
 
 
@@ -185,7 +185,7 @@ following fields: `classicLoadBalancerNames`, `maxPodsPerNode`, `taints`, `targe
 - For clusters upgraded from EKS 1.13 to EKS 1.14, managed nodegroups will not be able to communicate with unmanaged
 nodegroups. As a result, pods in a managed nodegroup will be unable to reach pods in an unmanaged
 nodegroup, and vice versa.
-To fix this, use eksctl 0.12.0 or above and run `eksctl update cluster`.
+To fix this, use eksctl 0.12.0 or above and run `eksctl upgrade cluster`.
 To fix this manually, add ingress rules to the shared security group and the default cluster
 security group to allow traffic from each other. The shared security group and the default cluster security groups have
 the naming convention `eksctl-<cluster>-cluster-ClusterSharedNodeSecurityGroup-<id>` and

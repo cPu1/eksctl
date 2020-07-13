@@ -1,9 +1,9 @@
 package v1alpha5
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
+	"reflect"
 
 	"github.com/weaveworks/eksctl/pkg/utils/ipnet"
 )
@@ -12,10 +12,11 @@ type (
 	// ClusterVPC holds global subnet and all child public/private subnet
 	ClusterVPC struct {
 		// +optional
-		Network `json:",inline"` // global CIDR and VPC ID
+		Network // global CIDR and VPC ID
 		// +optional
 		SecurityGroup string `json:"securityGroup,omitempty"` // cluster SG
-		// subnets are either public or private for use with separate nodegroups
+		// subnets are either public or private for use with separate
+		// nodegroups,
 		// these are keyed by AZ for convenience
 		// +optional
 		Subnets *ClusterSubnets `json:"subnets,omitempty"`
@@ -218,15 +219,7 @@ func (c *ClusterConfig) UpdateEndpointsMsg() string {
 
 // EndpointsEqual returns true of two endpoints have same values after dereferencing any pointers
 func EndpointsEqual(a, b ClusterEndpoints) bool {
-	ajson, err := json.Marshal(a)
-	if err != nil {
-		return false
-	}
-	bjson, err := json.Marshal(b)
-	if err != nil {
-		return false
-	}
-	return string(ajson) == string(bjson)
+	return reflect.DeepEqual(a, b)
 }
 
 //HasClusterEndpointAccess determines if endpoint access was configured in config file or not

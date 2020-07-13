@@ -31,14 +31,14 @@ func setLabelsCmd(cmd *cmdutils.Cmd) {
 	cmd.FlagSetGroup.InFlagSet("General", func(fs *pflag.FlagSet) {
 		fs.StringVar(&cfg.Metadata.Name, "cluster", "", "EKS cluster name")
 		fs.StringVarP(&options.nodeGroupName, "nodegroup", "n", "", "Nodegroup name")
-		fs.StringToStringVarP(&options.labels, "labels", "l", nil, "Create Labels")
+		cmdutils.AddStringToStringVarPFlag(fs, &options.labels, "labels", "l", nil, "Labels")
 		_ = cobra.MarkFlagRequired(fs, "labels")
 
-		cmdutils.AddRegionFlag(fs, cmd.ProviderConfig)
+		cmdutils.AddRegionFlag(fs, &cmd.ProviderConfig)
 		cmdutils.AddTimeoutFlag(fs, &cmd.ProviderConfig.WaitTimeout)
 	})
 
-	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, cmd.ProviderConfig, false)
+	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, &cmd.ProviderConfig, false)
 
 }
 
@@ -52,7 +52,7 @@ func setLabels(cmd *cmdutils.Cmd, options labelOptions) error {
 		return cmdutils.ErrUnsupportedNameArg()
 	}
 
-	ctl := eks.New(cmd.ProviderConfig, cmd.ClusterConfig)
+	ctl := eks.New(&cmd.ProviderConfig, cmd.ClusterConfig)
 
 	if err := ctl.CheckAuth(); err != nil {
 		return err

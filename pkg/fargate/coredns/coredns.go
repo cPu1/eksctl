@@ -59,7 +59,7 @@ func IsScheduledOnFargate(clientSet kubeclient.Interface) (bool, error) {
 }
 
 func isDeploymentScheduledOnFargate(clientSet kubeclient.Interface) (bool, error) {
-	coredns, err := clientSet.ExtensionsV1beta1().Deployments(Namespace).Get(Name, metav1.GetOptions{})
+	coredns, err := clientSet.AppsV1().Deployments(Namespace).Get(Name, metav1.GetOptions{})
 	if err != nil {
 		return false, err
 	}
@@ -105,16 +105,16 @@ func isRunningOnFargate(pod *v1.Pod) bool {
 // ScheduleOnFargate modifies EKS' coredns deployment so that it can be scheduled
 // on Fargate.
 func ScheduleOnFargate(clientSet kubeclient.Interface) error {
-	if err := patchDeployment(clientSet); err != nil {
+	if err := scheduleOnFargate(clientSet); err != nil {
 		return errors.Wrapf(err, "failed to make %q deployment schedulable on Fargate", Name)
 	}
 	logger.Info("%q is now schedulable onto Fargate", Name)
 	return nil
 }
 
-func patchDeployment(clientSet kubeclient.Interface) error {
-	client := clientSet.ExtensionsV1beta1().Deployments(Namespace)
-	coredns, err := client.Get(Name, metav1.GetOptions{})
+func scheduleOnFargate(clientSet kubeclient.Interface) error {
+	deployments := clientSet.AppsV1().Deployments(Namespace)
+	coredns, err := deployments.Get(Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -123,9 +123,9 @@ func patchDeployment(clientSet kubeclient.Interface) error {
 	if err != nil {
 		return errors.Wrapf(err, "failed to marshal %q deployment", Name)
 	}
-	patched, err := client.Patch(Name, types.MergePatchType, bytes)
+	patched, err := deployments.Patch(Name, types.MergePatchType, bytes)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to patch deployment")
 	}
 	value, exists := patched.Spec.Template.Annotations[ComputeTypeAnnotationKey]
 	if !exists {
