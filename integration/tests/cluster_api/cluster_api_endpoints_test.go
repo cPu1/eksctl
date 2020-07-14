@@ -134,14 +134,14 @@ var _ = Describe("(Integration) Create and Update Cluster with Endpoint Configs"
 				ContainElement(ContainSubstring(endpointPrivTmpl, e.Private)),
 			))
 			if e.Type == deleteCluster {
-				// nned to update public access to allow access to delete when it isn't allowed
+				// need to update public access to allow access to delete when it isn't allowed
 				if e.Public == false {
 					utilsCmd := params.EksctlUtilsCmd.
 						WithTimeout(timeOutSeconds*time.Second).WithArgs(
 						"update-cluster-endpoints",
 						"--name", clName,
 						fmt.Sprintf("--public-access=%v", true),
-						fmt.Sprintf("--approve"),
+						"--approve",
 					)
 					Expect(utilsCmd).Should(RunSuccessfully())
 				}
@@ -161,13 +161,6 @@ var _ = Describe("(Integration) Create and Update Cluster with Endpoint Configs"
 			Public:  true,
 			Type:    createCluster,
 			Fails:   false,
-		}),
-		Entry("Create cluster2, Private=true, Public=false, should not succeed", endpointAccessCase{
-			Name:    "cluster2",
-			Private: true,
-			Public:  false,
-			Type:    createCluster,
-			Fails:   true,
 		}),
 		Entry("Create cluster3, Private=true, Public=true, should succeed", endpointAccessCase{
 			Name:    "cluster3",

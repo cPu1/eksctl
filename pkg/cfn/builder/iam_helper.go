@@ -5,15 +5,17 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/arn"
-	gfn "github.com/awslabs/goformation/cloudformation"
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	cft "github.com/weaveworks/eksctl/pkg/cfn/template"
+	gfn "github.com/weaveworks/goformation/v4/cloudformation"
+	gfniam "github.com/weaveworks/goformation/v4/cloudformation/iam"
+	gfnt "github.com/weaveworks/goformation/v4/cloudformation/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type cfnTemplate interface {
-	attachAllowPolicy(name string, refRole *gfn.Value, resources interface{}, actions []string)
-	newResource(name string, resource interface{}) *gfn.Value
+	attachAllowPolicy(name string, refRole *gfnt.Value, resources interface{}, actions []string)
+	newResource(name string, resource gfn.Resource) *gfnt.Value
 }
 
 // createRole creates an IAM role with policies required for the worker nodes and addons
@@ -22,18 +24,18 @@ func createRole(cfnTemplate cfnTemplate, iamConfig *api.NodeGroupIAM, managed bo
 	if err != nil {
 		return err
 	}
-	role := gfn.AWSIAMRole{
-		Path:                     gfn.NewString("/"),
+	role := gfniam.Role{
+		Path:                     gfnt.NewString("/"),
 		AssumeRolePolicyDocument: cft.MakeAssumeRolePolicyDocumentForServices(MakeServiceRef("EC2")),
 		ManagedPolicyArns:        managedPolicyARNs,
 	}
 
 	if iamConfig.InstanceRoleName != "" {
-		role.RoleName = gfn.NewString(iamConfig.InstanceRoleName)
+		role.RoleName = gfnt.NewString(iamConfig.InstanceRoleName)
 	}
 
 	if iamConfig.InstanceRolePermissionsBoundary != "" {
-		role.PermissionsBoundary = gfn.NewString(iamConfig.InstanceRolePermissionsBoundary)
+		role.PermissionsBoundary = gfnt.NewString(iamConfig.InstanceRolePermissionsBoundary)
 	}
 
 	refIR := cfnTemplate.newResource(cfnIAMInstanceRoleName, &role)
@@ -60,13 +62,12 @@ func createRole(cfnTemplate cfnTemplate, iamConfig *api.NodeGroupIAM, managed bo
 		)
 
 		hostedZonePolicy := []string{
-			"route53:ListHostedZones",
 			"route53:ListResourceRecordSets",
 			"route53:ListHostedZonesByName",
 		}
 
 		if api.IsEnabled(iamConfig.WithAddonPolicies.ExternalDNS) {
-			hostedZonePolicy = append(hostedZonePolicy, "route53:ListTagsForResource")
+			hostedZonePolicy = append(hostedZonePolicy, "route53:ListHostedZones", "route53:ListTagsForResource")
 		}
 
 		cfnTemplate.attachAllowPolicy("PolicyCertManagerHostedZones", refIR, "*", hostedZonePolicy)
@@ -90,23 +91,35 @@ func createRole(cfnTemplate cfnTemplate, iamConfig *api.NodeGroupIAM, managed bo
 		)
 	}
 
+	appMeshActions := []string{
+		"servicediscovery:CreateService",
+		"servicediscovery:DeleteService",
+		"servicediscovery:GetService",
+		"servicediscovery:GetInstance",
+		"servicediscovery:RegisterInstance",
+		"servicediscovery:DeregisterInstance",
+		"servicediscovery:ListInstances",
+		"servicediscovery:ListNamespaces",
+		"servicediscovery:ListServices",
+		"servicediscovery:GetInstancesHealthStatus",
+		"servicediscovery:UpdateInstanceCustomHealthStatus",
+		"servicediscovery:GetOperation",
+		"route53:GetHealthCheck",
+		"route53:CreateHealthCheck",
+		"route53:UpdateHealthCheck",
+		"route53:ChangeResourceRecordSets",
+		"route53:DeleteHealthCheck",
+	}
+
 	if api.IsEnabled(iamConfig.WithAddonPolicies.AppMesh) {
 		cfnTemplate.attachAllowPolicy("PolicyAppMesh", refIR, "*",
-			[]string{
-				"appmesh:*",
-				"servicediscovery:CreateService",
-				"servicediscovery:GetService",
-				"servicediscovery:RegisterInstance",
-				"servicediscovery:DeregisterInstance",
-				"servicediscovery:ListInstances",
-				"servicediscovery:ListNamespaces",
-				"servicediscovery:ListServices",
-				"route53:GetHealthCheck",
-				"route53:CreateHealthCheck",
-				"route53:UpdateHealthCheck",
-				"route53:ChangeResourceRecordSets",
-				"route53:DeleteHealthCheck",
-			},
+			append(appMeshActions, "appmesh:*"),
+		)
+	}
+
+	if api.IsEnabled(iamConfig.WithAddonPolicies.AppMeshPreview) {
+		cfnTemplate.attachAllowPolicy("PolicyAppMeshPreview", refIR, "*",
+			append(appMeshActions, "appmesh-preview:*"),
 		)
 	}
 
@@ -232,6 +245,16 @@ func createRole(cfnTemplate cfnTemplate, iamConfig *api.NodeGroupIAM, managed bo
 				"tag:GetResources",
 				"tag:TagResources",
 				"waf:GetWebACL",
+				"wafv2:GetWebACL",
+				"wafv2:GetWebACLForResource",
+				"wafv2:AssociateWebACL",
+				"wafv2:DisassociateWebACL",
+				"shield:DescribeProtection",
+				"shield:GetSubscriptionState",
+				"shield:DeleteProtection",
+				"shield:CreateProtection",
+				"shield:DescribeSubscription",
+				"shield:ListProtections",
 			},
 		)
 	}
@@ -250,7 +273,7 @@ func createRole(cfnTemplate cfnTemplate, iamConfig *api.NodeGroupIAM, managed bo
 	return nil
 }
 
-func makeManagedPolicies(iamConfig *api.NodeGroupIAM, managed bool) ([]*gfn.Value, error) {
+func makeManagedPolicies(iamConfig *api.NodeGroupIAM, managed bool) (*gfnt.Value, error) {
 	managedPolicyNames := sets.NewString()
 	if len(iamConfig.AttachPolicyARNs) == 0 {
 		managedPolicyNames.Insert(iamDefaultNodePolicies...)
@@ -287,8 +310,8 @@ func makeManagedPolicies(iamConfig *api.NodeGroupIAM, managed bool) ([]*gfn.Valu
 		managedPolicyNames.Delete(resourceName)
 	}
 
-	return append(
+	return gfnt.NewSlice(append(
 		makeStringSlice(iamConfig.AttachPolicyARNs...),
 		makePolicyARNs(managedPolicyNames.List()...)...,
-	), nil
+	)...), nil
 }

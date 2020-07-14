@@ -2,6 +2,8 @@ package v1alpha5
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/weaveworks/eksctl/pkg/git"
 )
 
 // SetClusterConfigDefaults will set defaults for a given cluster
@@ -25,6 +27,10 @@ func SetClusterConfigDefaults(cfg *ClusterConfig) {
 		case "all", "*":
 			cfg.CloudWatch.ClusterLogging.EnableTypes = SupportedCloudWatchClusterLogTypes()
 		}
+	}
+
+	if cfg.PrivateCluster == nil {
+		cfg.PrivateCluster = &PrivateCluster{}
 	}
 }
 
@@ -59,10 +65,18 @@ func SetNodeGroupDefaults(ng *NodeGroup, meta *ClusterMeta) {
 		}
 	}
 
+	if ng.ScalingConfig == nil {
+		ng.ScalingConfig = &ScalingConfig{}
+	}
+
 	setSSHDefaults(ng.SSH)
 
 	if !IsSetAndNonEmptyString(ng.VolumeType) {
 		ng.VolumeType = &DefaultNodeVolumeType
+	}
+
+	if ng.VolumeSize == nil {
+		ng.VolumeSize = &DefaultNodeVolumeSize
 	}
 
 	if ng.IAM == nil {
@@ -209,11 +223,11 @@ func SetClusterEndpointAccessDefaults(vpc *ClusterVPC) {
 	}
 
 	if vpc.ClusterEndpoints.PublicAccess == nil {
-		vpc.ClusterEndpoints.PublicAccess = Enabled()
+		vpc.ClusterEndpoints.PublicAccess = ClusterEndpointAccessDefaults().PublicAccess
 	}
 
 	if vpc.ClusterEndpoints.PrivateAccess == nil {
-		vpc.ClusterEndpoints.PrivateAccess = Disabled()
+		vpc.ClusterEndpoints.PrivateAccess = ClusterEndpointAccessDefaults().PrivateAccess
 	}
 }
 
@@ -237,5 +251,50 @@ func (c *ClusterConfig) SetDefaultFargateProfile() {
 				{Namespace: "kube-system"},
 			},
 		},
+	}
+}
+
+// SetDefaultGitSettings sets the default values for the gitops repo and operator settings
+func SetDefaultGitSettings(c *ClusterConfig) {
+	if c.Git == nil {
+		return
+	}
+
+	if c.Git.Operator.CommitOperatorManifests == nil {
+		c.Git.Operator.CommitOperatorManifests = Enabled()
+	}
+
+	if c.Git.Operator.Label == "" {
+		c.Git.Operator.Label = "flux"
+	}
+	if c.Git.Operator.Namespace == "" {
+		c.Git.Operator.Namespace = "flux"
+	}
+	if c.Git.Operator.WithHelm == nil {
+		c.Git.Operator.WithHelm = Enabled()
+	}
+
+	if c.Git.Repo != nil {
+		repo := c.Git.Repo
+		if repo.FluxPath == "" {
+			repo.FluxPath = "flux/"
+		}
+		if repo.Branch == "" {
+			repo.Branch = "master"
+		}
+		if repo.User == "" {
+			repo.User = "Flux"
+		}
+	}
+
+	if c.Git.BootstrapProfile != nil {
+		profile := c.Git.BootstrapProfile
+		if profile.Source != "" && profile.OutputPath == "" {
+			repoName, err := git.RepoName(profile.Source)
+			if err != nil {
+				profile.OutputPath = "./"
+			}
+			profile.OutputPath = "./" + repoName
+		}
 	}
 }

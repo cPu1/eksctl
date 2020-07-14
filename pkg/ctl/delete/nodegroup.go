@@ -8,6 +8,7 @@ import (
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/authconfigmap"
 	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils"
+	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils/filter"
 	"github.com/weaveworks/eksctl/pkg/drain"
 )
 
@@ -33,7 +34,7 @@ func deleteNodeGroupWithRunFunc(cmd *cmdutils.Cmd, runFunc func(cmd *cmdutils.Cm
 
 	cmd.FlagSetGroup.InFlagSet("General", func(fs *pflag.FlagSet) {
 		fs.StringVar(&cfg.Metadata.Name, "cluster", "", "EKS cluster name")
-		cmdutils.AddRegionFlag(fs, cmd.ProviderConfig)
+		cmdutils.AddRegionFlag(fs, &cmd.ProviderConfig)
 		fs.StringVarP(&ng.Name, "name", "n", "", "Name of the nodegroup to delete")
 		cmdutils.AddConfigFileFlag(fs, &cmd.ClusterConfigFile)
 		cmdutils.AddApproveFlag(fs, cmd)
@@ -47,11 +48,11 @@ func deleteNodeGroupWithRunFunc(cmd *cmdutils.Cmd, runFunc func(cmd *cmdutils.Cm
 		cmdutils.AddTimeoutFlag(fs, &cmd.ProviderConfig.WaitTimeout)
 	})
 
-	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, cmd.ProviderConfig, true)
+	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, &cmd.ProviderConfig, true)
 }
 
 func doDeleteNodeGroup(cmd *cmdutils.Cmd, ng *api.NodeGroup, updateAuthConfigMap, deleteNodeGroupDrain, onlyMissing bool) error {
-	ngFilter := cmdutils.NewNodeGroupFilter()
+	ngFilter := filter.NewNodeGroupFilter()
 
 	if err := cmdutils.NewDeleteNodeGroupLoader(cmd, ng, ngFilter).Load(); err != nil {
 		return err
@@ -82,8 +83,11 @@ func doDeleteNodeGroup(cmd *cmdutils.Cmd, ng *api.NodeGroup, updateAuthConfigMap
 
 	if cmd.ClusterConfigFile != "" {
 		logger.Info("comparing %d nodegroups defined in the given config (%q) against remote state", len(cfg.NodeGroups), cmd.ClusterConfigFile)
-		if err := ngFilter.SetIncludeOrExcludeMissingFilter(stackManager, onlyMissing, cfg); err != nil {
-			return err
+		if onlyMissing {
+			err = ngFilter.SetOnlyRemote(stackManager, cfg)
+			if err != nil {
+				return err
+			}
 		}
 	} else {
 		nodeGroupType, err := stackManager.GetNodeGroupStackType(ng.Name)
@@ -96,7 +100,9 @@ func doDeleteNodeGroup(cmd *cmdutils.Cmd, ng *api.NodeGroup, updateAuthConfigMap
 		case api.NodeGroupTypeManaged:
 			cfg.ManagedNodeGroups = []*api.ManagedNodeGroup{
 				{
-					Name: ng.Name,
+					NodeGroupBase: &api.NodeGroupBase{
+						Name: ng.Name,
+					},
 				},
 			}
 		}
@@ -107,17 +113,11 @@ func doDeleteNodeGroup(cmd *cmdutils.Cmd, ng *api.NodeGroup, updateAuthConfigMap
 	logFiltered()
 
 	if updateAuthConfigMap {
-		cmdutils.LogIntendedAction(cmd.Plan, "delete %d nodegroups from auth ConfigMap in cluster %q", len(cfg.NodeGroups), cfg.Metadata.Name)
-		if !cmd.Plan {
-			for _, ng := range cfg.NodeGroups {
-				if ng.IAM == nil || ng.IAM.InstanceRoleARN == "" {
-					if err := ctl.GetNodeGroupIAM(stackManager, cfg, ng); err != nil {
-						logger.Warning("error getting instance role ARN for nodegroup %q: %v", ng.Name, err)
-						return nil
-					}
-				}
-				if err := authconfigmap.RemoveNodeGroup(clientSet, ng); err != nil {
-					logger.Warning(err.Error())
+		for _, ng := range cfg.NodeGroups {
+			if ng.IAM == nil || ng.IAM.InstanceRoleARN == "" {
+				if err := ctl.GetNodeGroupIAM(stackManager, ng); err != nil {
+					logger.Warning("error getting instance role ARN for nodegroup %q: %v", ng.Name, err)
+					return nil
 				}
 			}
 		}
@@ -158,8 +158,20 @@ func doDeleteNodeGroup(cmd *cmdutils.Cmd, ng *api.NodeGroup, updateAuthConfigMap
 		if errs := tasks.DoAllSync(); len(errs) > 0 {
 			return handleErrors(errs, "nodegroup(s)")
 		}
-		cmdutils.LogCompletedAction(cmd.Plan, "deleted %d nodegroup(s) from cluster %q", len(allNodeGroups), cfg.Metadata.Name)
 	}
+
+	if updateAuthConfigMap {
+		cmdutils.LogIntendedAction(cmd.Plan, "delete %d nodegroups from auth ConfigMap in cluster %q", len(cfg.NodeGroups), cfg.Metadata.Name)
+		if !cmd.Plan {
+			for _, ng := range cfg.NodeGroups {
+				if err := authconfigmap.RemoveNodeGroup(clientSet, ng); err != nil {
+					logger.Warning(err.Error())
+				}
+			}
+		}
+	}
+
+	cmdutils.LogCompletedAction(cmd.Plan, "deleted %d nodegroup(s) from cluster %q", len(allNodeGroups), cfg.Metadata.Name)
 
 	cmdutils.LogPlanModeWarning(cmd.Plan && len(allNodeGroups) > 0)
 

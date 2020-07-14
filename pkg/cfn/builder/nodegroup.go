@@ -2,9 +2,12 @@ package builder
 
 import (
 	"fmt"
+	"strings"
 
 	cfn "github.com/aws/aws-sdk-go/service/cloudformation"
-	gfn "github.com/awslabs/goformation/cloudformation"
+	gfn "github.com/weaveworks/goformation/v4/cloudformation"
+	gfnec2 "github.com/weaveworks/goformation/v4/cloudformation/ec2"
+	gfnt "github.com/weaveworks/goformation/v4/cloudformation/types"
 
 	"github.com/kris-nova/logger"
 
@@ -22,10 +25,10 @@ type NodeGroupResourceSet struct {
 	provider             api.ClusterProvider
 	clusterStackName     string
 	nodeGroupName        string
-	instanceProfileARN   *gfn.Value
-	securityGroups       []*gfn.Value
-	vpc                  *gfn.Value
-	userData             *gfn.Value
+	instanceProfileARN   *gfnt.Value
+	securityGroups       []*gfnt.Value
+	vpc                  *gfnt.Value
+	userData             *gfnt.Value
 }
 
 // NewNodeGroupResourceSet returns a resource set for a nodegroup embedded in a cluster config
@@ -62,7 +65,7 @@ func (n *NodeGroupResourceSet) AddAllResources() error {
 	if err != nil {
 		return err
 	}
-	n.userData = gfn.NewString(userData)
+	n.userData = gfnt.NewString(userData)
 
 	// Ensure MinSize is set, as it is required by the ASG cfn resource
 	if n.spec.MinSize == nil {
@@ -109,44 +112,44 @@ func (n *NodeGroupResourceSet) Template() gfn.Template {
 	return *n.rs.template
 }
 
-func (n *NodeGroupResourceSet) newResource(name string, resource interface{}) *gfn.Value {
+func (n *NodeGroupResourceSet) newResource(name string, resource gfn.Resource) *gfnt.Value {
 	return n.rs.newResource(name, resource)
 }
 
 func (n *NodeGroupResourceSet) addResourcesForNodeGroup() error {
-	launchTemplateName := gfn.MakeFnSubString(fmt.Sprintf("${%s}", gfn.StackName))
+	launchTemplateName := gfnt.MakeFnSubString(fmt.Sprintf("${%s}", gfnt.StackName))
 	launchTemplateData := newLaunchTemplateData(n)
 
 	if n.spec.SSH != nil && api.IsSetAndNonEmptyString(n.spec.SSH.PublicKeyName) {
-		launchTemplateData.KeyName = gfn.NewString(*n.spec.SSH.PublicKeyName)
+		launchTemplateData.KeyName = gfnt.NewString(*n.spec.SSH.PublicKeyName)
 	}
 
 	if volumeSize := n.spec.VolumeSize; volumeSize != nil && *volumeSize > 0 {
 		var (
-			kmsKeyID   *gfn.Value
-			volumeIOPS *gfn.Value
+			kmsKeyID   *gfnt.Value
+			volumeIOPS *gfnt.Value
 		)
 		if api.IsSetAndNonEmptyString(n.spec.VolumeKmsKeyID) {
-			kmsKeyID = gfn.NewString(*n.spec.VolumeKmsKeyID)
+			kmsKeyID = gfnt.NewString(*n.spec.VolumeKmsKeyID)
 		}
 
 		if *n.spec.VolumeType == api.NodeVolumeTypeIO1 {
-			volumeIOPS = gfn.NewInteger(*n.spec.VolumeIOPS)
+			volumeIOPS = gfnt.NewInteger(*n.spec.VolumeIOPS)
 		}
 
-		launchTemplateData.BlockDeviceMappings = []gfn.AWSEC2LaunchTemplate_BlockDeviceMapping{{
-			DeviceName: gfn.NewString(*n.spec.VolumeName),
-			Ebs: &gfn.AWSEC2LaunchTemplate_Ebs{
-				VolumeSize: gfn.NewInteger(*volumeSize),
-				VolumeType: gfn.NewString(*n.spec.VolumeType),
-				Encrypted:  gfn.NewBoolean(*n.spec.VolumeEncrypted),
+		launchTemplateData.BlockDeviceMappings = []gfnec2.LaunchTemplate_BlockDeviceMapping{{
+			DeviceName: gfnt.NewString(*n.spec.VolumeName),
+			Ebs: &gfnec2.LaunchTemplate_Ebs{
+				VolumeSize: gfnt.NewInteger(*volumeSize),
+				VolumeType: gfnt.NewString(*n.spec.VolumeType),
+				Encrypted:  gfnt.NewBoolean(*n.spec.VolumeEncrypted),
 				KmsKeyId:   kmsKeyID,
 				Iops:       volumeIOPS,
 			},
 		}}
 	}
 
-	n.newResource("NodeGroupLaunchTemplate", &gfn.AWSEC2LaunchTemplate{
+	n.newResource("NodeGroupLaunchTemplate", &gfnec2.LaunchTemplate{
 		LaunchTemplateName: launchTemplateName,
 		LaunchTemplateData: launchTemplateData,
 	})
@@ -159,7 +162,7 @@ func (n *NodeGroupResourceSet) addResourcesForNodeGroup() error {
 	tags := []map[string]interface{}{
 		{
 			"Key":               "Name",
-			"Value":             fmt.Sprintf("%s-%s-Node", n.clusterSpec.Metadata.Name, n.nodeGroupName),
+			"Value":             n.generateNodeName(),
 			"PropagateAtLaunch": "true",
 		},
 		{
@@ -189,8 +192,23 @@ func (n *NodeGroupResourceSet) addResourcesForNodeGroup() error {
 	return nil
 }
 
+// generateNodeName formulates the name based on the configuration in input
+func (n *NodeGroupResourceSet) generateNodeName() string {
+	name := []string{}
+	if n.spec.InstancePrefix != "" {
+		name = append(name, n.spec.InstancePrefix, "-")
+	}
+	// this overrides the default naming convention
+	if n.spec.InstanceName != "" {
+		name = append(name, n.spec.InstanceName)
+	} else {
+		name = append(name, fmt.Sprintf("%s-%s-Node", n.clusterSpec.Metadata.Name, n.nodeGroupName))
+	}
+	return strings.Join(name, "")
+}
+
 // AssignSubnets subnets based on the specified availability zones
-func AssignSubnets(availabilityZones []string, clusterStackName string, clusterSpec *api.ClusterConfig, privateNetworking bool) (interface{}, error) {
+func AssignSubnets(availabilityZones []string, clusterStackName string, clusterSpec *api.ClusterConfig, privateNetworking bool) (*gfnt.Value, error) {
 	// currently goformation type system doesn't allow specifying `VPCZoneIdentifier: { "Fn::ImportValue": ... }`,
 	// and tags don't have `PropagateAtLaunch` field, so we have a custom method here until this gets resolved
 
@@ -205,28 +223,26 @@ func AssignSubnets(availabilityZones []string, clusterStackName string, clusterS
 		if len(subnets) < numNodeGroupsAZs {
 			return nil, fmt.Errorf("VPC doesn't have enough subnets for nodegroup AZs %s", makeErrorDesc())
 		}
-		subnetIDs := make([]string, numNodeGroupsAZs)
+		subnetIDs := make([]*gfnt.Value, numNodeGroupsAZs)
 		for i, az := range availabilityZones {
 			subnet, ok := subnets[az]
 			if !ok {
 				return nil, fmt.Errorf("VPC doesn't have subnets in %s %s", az, makeErrorDesc())
 			}
 
-			subnetIDs[i] = subnet.ID
+			subnetIDs[i] = gfnt.NewString(subnet.ID)
 		}
-		return subnetIDs, nil
+		return gfnt.NewSlice(subnetIDs...), nil
 	}
 
-	var subnets *gfn.Value
+	var subnets *gfnt.Value
 	if privateNetworking {
 		subnets = makeImportValue(clusterStackName, outputs.ClusterSubnetsPrivate)
 	} else {
 		subnets = makeImportValue(clusterStackName, outputs.ClusterSubnetsPublic)
 	}
 
-	return map[string][]interface{}{
-		gfn.FnSplit: {",", subnets},
-	}, nil
+	return gfnt.MakeFnSplit(",", subnets), nil
 }
 
 // GetAllOutputs collects all outputs of the nodegroup
@@ -234,33 +250,43 @@ func (n *NodeGroupResourceSet) GetAllOutputs(stack cfn.Stack) error {
 	return n.rs.GetAllOutputs(stack)
 }
 
-func newLaunchTemplateData(n *NodeGroupResourceSet) *gfn.AWSEC2LaunchTemplate_LaunchTemplateData {
-	launchTemplateData := &gfn.AWSEC2LaunchTemplate_LaunchTemplateData{
-		IamInstanceProfile: &gfn.AWSEC2LaunchTemplate_IamInstanceProfile{
+func newLaunchTemplateData(n *NodeGroupResourceSet) *gfnec2.LaunchTemplate_LaunchTemplateData {
+	launchTemplateData := &gfnec2.LaunchTemplate_LaunchTemplateData{
+		IamInstanceProfile: &gfnec2.LaunchTemplate_IamInstanceProfile{
 			Arn: n.instanceProfileARN,
 		},
-		ImageId:  gfn.NewString(n.spec.AMI),
+		ImageId:  gfnt.NewString(n.spec.AMI),
 		UserData: n.userData,
-		NetworkInterfaces: []gfn.AWSEC2LaunchTemplate_NetworkInterface{{
+		NetworkInterfaces: []gfnec2.LaunchTemplate_NetworkInterface{{
 			// Explicitly un-setting this so that it doesn't get defaulted to true
 			AssociatePublicIpAddress: nil,
-			DeviceIndex:              gfn.NewInteger(0),
-			Groups:                   n.securityGroups,
+			DeviceIndex:              gfnt.NewInteger(0),
+			Groups:                   gfnt.NewSlice(n.securityGroups...),
 		}},
+		MetadataOptions: &gfnec2.LaunchTemplate_MetadataOptions{
+			HttpPutResponseHopLimit: gfnt.NewInteger(2),
+		},
 	}
+
 	if !api.HasMixedInstances(n.spec) {
-		launchTemplateData.InstanceType = gfn.NewString(n.spec.InstanceType)
+		launchTemplateData.InstanceType = gfnt.NewString(n.spec.InstanceType)
 	} else {
-		launchTemplateData.InstanceType = gfn.NewString(n.spec.InstancesDistribution.InstanceTypes[0])
+		launchTemplateData.InstanceType = gfnt.NewString(n.spec.InstancesDistribution.InstanceTypes[0])
 	}
 	if n.spec.EBSOptimized != nil {
-		launchTemplateData.EbsOptimized = gfn.NewBoolean(*n.spec.EBSOptimized)
+		launchTemplateData.EbsOptimized = gfnt.NewBoolean(*n.spec.EBSOptimized)
+	}
+
+	if n.spec.CPUCredits != nil {
+		launchTemplateData.CreditSpecification = &gfnec2.LaunchTemplate_CreditSpecification{
+			CpuCredits: gfnt.NewString(strings.ToLower(*n.spec.CPUCredits)),
+		}
 	}
 
 	return launchTemplateData
 }
 
-func nodeGroupResource(launchTemplateName *gfn.Value, vpcZoneIdentifier interface{}, tags []map[string]interface{}, ng *api.NodeGroup) *awsCloudFormationResource {
+func nodeGroupResource(launchTemplateName *gfnt.Value, vpcZoneIdentifier interface{}, tags []map[string]interface{}, ng *api.NodeGroup) *awsCloudFormationResource {
 	ngProps := map[string]interface{}{
 		"VPCZoneIdentifier": vpcZoneIdentifier,
 		"Tags":              tags,
@@ -288,7 +314,7 @@ func nodeGroupResource(launchTemplateName *gfn.Value, vpcZoneIdentifier interfac
 	} else {
 		ngProps["LaunchTemplate"] = map[string]interface{}{
 			"LaunchTemplateName": launchTemplateName,
-			"Version":            gfn.MakeFnGetAttString("NodeGroupLaunchTemplate.LatestVersionNumber"),
+			"Version":            gfnt.MakeFnGetAttString("NodeGroupLaunchTemplate", "LatestVersionNumber"),
 		}
 	}
 
@@ -304,7 +330,7 @@ func nodeGroupResource(launchTemplateName *gfn.Value, vpcZoneIdentifier interfac
 	}
 }
 
-func mixedInstancesPolicy(launchTemplateName *gfn.Value, ng *api.NodeGroup) *map[string]interface{} {
+func mixedInstancesPolicy(launchTemplateName *gfnt.Value, ng *api.NodeGroup) *map[string]interface{} {
 	instanceTypes := ng.InstancesDistribution.InstanceTypes
 	overrides := make([]map[string]string, len(instanceTypes))
 
@@ -317,7 +343,7 @@ func mixedInstancesPolicy(launchTemplateName *gfn.Value, ng *api.NodeGroup) *map
 		"LaunchTemplate": map[string]interface{}{
 			"LaunchTemplateSpecification": map[string]interface{}{
 				"LaunchTemplateName": launchTemplateName,
-				"Version":            gfn.MakeFnGetAttString("NodeGroupLaunchTemplate.LatestVersionNumber"),
+				"Version":            gfnt.MakeFnGetAttString("NodeGroupLaunchTemplate", "LatestVersionNumber"),
 			},
 
 			"Overrides": overrides,
@@ -354,9 +380,9 @@ func metricsCollectionResource(asgMetricsCollection []api.MetricsCollection) []m
 	for _, m := range asgMetricsCollection {
 		newCollection := make(map[string]interface{})
 
-		var metrics []string
-		metrics = append(metrics, m.Metrics...)
-		newCollection["Metrics"] = metrics
+		if len(m.Metrics) > 0 {
+			newCollection["Metrics"] = m.Metrics
+		}
 		newCollection["Granularity"] = m.Granularity
 
 		metricsCollections = append(metricsCollections, newCollection)

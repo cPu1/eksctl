@@ -184,7 +184,7 @@ func AddUpdateAuthConfigMap(fs *pflag.FlagSet, updateAuthConfigMap *bool, descri
 
 // AddCommonFlagsForKubeconfig adds common flags for controlling how output kubeconfig is written
 func AddCommonFlagsForKubeconfig(fs *pflag.FlagSet, outputPath, authenticatorRoleARN *string, setContext, autoPath *bool, exampleName string) {
-	fs.StringVar(outputPath, "kubeconfig", kubeconfig.DefaultPath, "path to write kubeconfig (incompatible with --auto-kubeconfig)")
+	fs.StringVar(outputPath, "kubeconfig", kubeconfig.DefaultPath(), "path to write kubeconfig (incompatible with --auto-kubeconfig)")
 	fs.StringVar(authenticatorRoleARN, "authenticator-role-arn", "", "AWS IAM role to assume for authenticator")
 	fs.BoolVar(setContext, "set-kubeconfig-context", true, "if true then current-context will be set in kubeconfig; if a context is already set then it will be overwritten")
 	fs.BoolVar(autoPath, "auto-kubeconfig", false, fmt.Sprintf("save kubeconfig file by cluster name, e.g. %q", kubeconfig.AutoPath(exampleName)))
@@ -194,6 +194,11 @@ func AddCommonFlagsForKubeconfig(fs *pflag.FlagSet, outputPath, authenticatorRol
 func AddCommonFlagsForGetCmd(fs *pflag.FlagSet, chunkSize *int, outputMode *printers.Type) {
 	fs.IntVar(chunkSize, "chunk-size", 100, "return large lists in chunks rather than all at once, pass 0 to disable")
 	fs.StringVarP(outputMode, "output", "o", "table", "specifies the output format (valid option: table, json, yaml)")
+}
+
+// AddStringToStringVarPFlag is a wrapper that prefixes the description of the flag for consistency
+func AddStringToStringVarPFlag(fs *pflag.FlagSet, p *map[string]string, name, shorthand string, value map[string]string, usage string) {
+	fs.StringToStringVarP(p, name, shorthand, value, fmt.Sprintf(`%s. List of comma separated KV pairs "k1=v1,k2=v2"`, usage))
 }
 
 // ErrUnsupportedRegion is a common error message

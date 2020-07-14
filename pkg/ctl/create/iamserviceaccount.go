@@ -10,6 +10,7 @@ import (
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils"
+	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils/filter"
 	"github.com/weaveworks/eksctl/pkg/kubernetes"
 	"github.com/weaveworks/eksctl/pkg/printers"
 )
@@ -45,22 +46,22 @@ func createIAMServiceAccountCmdWithRunFunc(cmd *cmdutils.Cmd, runFunc func(cmd *
 		fs.StringVar(&serviceAccount.Namespace, "namespace", "default", "namespace where to create the iamserviceaccount")
 		fs.StringSliceVar(&serviceAccount.AttachPolicyARNs, "attach-policy-arn", []string{}, "ARN of the policy where to create the iamserviceaccount")
 
-		fs.StringToStringVarP(&serviceAccount.Tags, "tags", "", map[string]string{}, `A list of KV pairs used to tag the IAM role (e.g. "Owner=John Doe,Team=Some Team")`)
+		cmdutils.AddStringToStringVarPFlag(fs, &serviceAccount.Tags, "tags", "", map[string]string{}, "Used to tag the IAM role")
 
 		fs.BoolVar(&overrideExistingServiceAccounts, "override-existing-serviceaccounts", false, "create IAM roles for existing serviceaccounts and update the serviceaccount")
 
 		cmdutils.AddIAMServiceAccountFilterFlags(fs, &cmd.Include, &cmd.Exclude)
 		cmdutils.AddApproveFlag(fs, cmd)
-		cmdutils.AddRegionFlag(fs, cmd.ProviderConfig)
+		cmdutils.AddRegionFlag(fs, &cmd.ProviderConfig)
 		cmdutils.AddConfigFileFlag(fs, &cmd.ClusterConfigFile)
 		cmdutils.AddTimeoutFlag(fs, &cmd.ProviderConfig.WaitTimeout)
 	})
 
-	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, cmd.ProviderConfig, true)
+	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, &cmd.ProviderConfig, true)
 }
 
 func doCreateIAMServiceAccount(cmd *cmdutils.Cmd, overrideExistingServiceAccounts bool) error {
-	saFilter := cmdutils.NewIAMServiceAccountFilter()
+	saFilter := filter.NewIAMServiceAccountFilter()
 
 	if err := cmdutils.NewCreateIAMServiceAccountLoader(cmd, saFilter).Load(); err != nil {
 		return err

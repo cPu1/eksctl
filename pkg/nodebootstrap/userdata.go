@@ -2,6 +2,7 @@ package nodebootstrap
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -65,9 +66,12 @@ func addFilesAndScripts(config *cloudconfig.CloudConfig, files configFiles, scri
 	return nil
 }
 
-func makeClientConfigData(spec *api.ClusterConfig, ng *api.NodeGroup, authenticatorCMD string) ([]byte, error) {
-	clientConfig, _, _ := kubeconfig.New(spec, "kubelet", configDir+"ca.crt")
-	kubeconfig.AppendAuthenticator(clientConfig, spec, authenticatorCMD, "", "")
+func makeClientConfigData(spec *api.ClusterConfig, authenticatorCMD string) ([]byte, error) {
+	clientConfig := kubeconfig.
+		NewBuilder(spec.Metadata, spec.Status, "kubelet").
+		UseCertificateAuthorityFile(configDir + "ca.crt").
+		Build()
+	kubeconfig.AppendAuthenticator(clientConfig, spec.Metadata, authenticatorCMD, "", "")
 	clientConfigData, err := clientcmd.Write(*clientConfig)
 	if err != nil {
 		return nil, errors.Wrap(err, "serialising kubeconfig for nodegroup")
@@ -85,6 +89,14 @@ func clusterDNS(spec *api.ClusterConfig, ng *api.NodeGroup) string {
 		return "172.20.0.10"
 	}
 	return "10.100.0.10"
+}
+
+func getKubeReserved(info InstanceTypeInfo) api.InlineDocument {
+	return api.InlineDocument{
+		"ephemeral-storage": info.DefaultStorageToReserve(),
+		"cpu":               info.DefaultCPUToReserve(),
+		"memory":            info.DefaultMemoryToReserve(),
+	}
 }
 
 func makeKubeletConfigYAML(spec *api.ClusterConfig, ng *api.NodeGroup) ([]byte, error) {
@@ -106,12 +118,34 @@ func makeKubeletConfigYAML(spec *api.ClusterConfig, ng *api.NodeGroup) ([]byte, 
 
 	// Set default reservations if specs about instance is available
 	if info, ok := instanceTypeInfos[ng.InstanceType]; ok {
+		// This is a NodeGroup with a single instanceType defined
 		if _, ok := obj["kubeReserved"]; !ok {
 			obj["kubeReserved"] = api.InlineDocument{}
 		}
-		obj["kubeReserved"].(api.InlineDocument)["ephemeral-storage"] = info.DefaultStorageToReserve()
-		obj["kubeReserved"].(api.InlineDocument)["cpu"] = info.DefaultCPUToReserve()
-		obj["kubeReserved"].(api.InlineDocument)["memory"] = info.DefaultMemoryToReserve()
+		obj["kubeReserved"] = getKubeReserved(info)
+	} else if ng.InstancesDistribution != nil {
+		// This is a NodeGroup using mixed instance types
+		var minCPU, minRAM int64
+		for _, instanceType := range ng.InstancesDistribution.InstanceTypes {
+			if info, ok := instanceTypeInfos[instanceType]; ok {
+				if instanceCPU := info.CPU; minCPU == 0 || instanceCPU < minCPU {
+					minCPU = instanceCPU
+				}
+				if instanceRAM := info.Memory; minRAM == 0 || instanceRAM < minRAM {
+					minRAM = instanceRAM
+				}
+			}
+		}
+		if minCPU > 0 && minRAM > 0 {
+			info = InstanceTypeInfo{
+				Memory: minRAM,
+				CPU:    minCPU,
+			}
+			if _, ok := obj["kubeReserved"]; !ok {
+				obj["kubeReserved"] = api.InlineDocument{}
+			}
+			obj["kubeReserved"] = getKubeReserved(info)
+		}
 	}
 
 	// Add extra configuration from configfile
@@ -147,10 +181,11 @@ func toCLIArgs(values map[string]string) string {
 	for k, v := range values {
 		args = append(args, fmt.Sprintf("--%s=%s", k, v))
 	}
+	sort.Strings(args)
 	return strings.Join(args, " ")
 }
 
-func makeCommonKubeletEnvParams(spec *api.ClusterConfig, ng *api.NodeGroup) []string {
+func makeCommonKubeletEnvParams(ng *api.NodeGroup) []string {
 	variables := []string{
 		fmt.Sprintf("NODE_LABELS=%s", kvs(ng.Labels)),
 		fmt.Sprintf("NODE_TAINTS=%s", kvs(ng.Taints)),
@@ -188,9 +223,10 @@ func NewUserData(spec *api.ClusterConfig, ng *api.NodeGroup) (string, error) {
 		return NewUserDataForUbuntu1804(spec, ng)
 	case api.NodeImageFamilyBottlerocket:
 		return NewUserDataForBottlerocket(spec, ng)
-	case api.NodeImageFamilyWindowsServer2019FullContainer, api.NodeImageFamilyWindowsServer2019CoreContainer:
-		return newUserDataForWindows(spec, ng)
 	default:
+		if api.IsWindowsImage(ng.AMIFamily) {
+			return NewUserDataForWindows(spec, ng)
+		}
 		return "", nil
 	}
 }

@@ -9,6 +9,7 @@ import (
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils"
 	"github.com/weaveworks/eksctl/pkg/eks"
+	"github.com/weaveworks/eksctl/pkg/utils"
 )
 
 func checkSubnetsGivenAsFlags(params *cmdutils.CreateClusterCmdParams) bool {
@@ -28,8 +29,8 @@ func checkVersion(cmd *cmdutils.Cmd, ctl *eks.ClusterProvider, meta *api.Cluster
 		meta.Version = api.LatestVersion
 		logger.Info("will use latest version (%s) for new nodegroup(s)", meta.Version)
 	default:
-		if !isValidVersion(meta.Version) {
-			if isDeprecatedVersion(meta.Version) {
+		if !api.IsSupportedVersion(meta.Version) {
+			if api.IsDeprecatedVersion(meta.Version) {
 				return fmt.Errorf("invalid version, %s is no longer supported, supported values: auto, default, latest, %s\nsee also: https://docs.aws.amazon.com/eks/latest/userguide/kubernetes-versions.html", meta.Version, strings.Join(api.SupportedVersions(), ", "))
 			}
 			return fmt.Errorf("invalid version %s, supported values: auto, default, latest, %s", meta.Version, strings.Join(api.SupportedVersions(), ", "))
@@ -52,20 +53,19 @@ func checkVersion(cmd *cmdutils.Cmd, ctl *eks.ClusterProvider, meta *api.Cluster
 	return nil
 }
 
-func isValidVersion(version string) bool {
-	for _, v := range api.SupportedVersions() {
-		if version == v {
-			return true
+func showDevicePluginMessageForNodeGroup(nodeGroup *api.NodeGroup, installNeuronPlugin bool) {
+	if api.HasInstanceType(nodeGroup, utils.IsInferentiaInstanceType) {
+		if installNeuronPlugin {
+			logger.Info("as you are using the EKS-Optimized Accelerated AMI with an inf1 instance type, the AWS Neuron Kubernetes device plugin was automatically installed.")
+			logger.Info("\t to skip installing it, use --install-neuron-plugin=false.")
+		} else {
+			// if neuron instance type, give instructions
+			logger.Info("as you are using the EKS-Optimized Accelerated AMI with an inf1 instance type, you will need to install the AWS Neuron Kubernetes device plugin.")
+			logger.Info("\t see the following page for instructions: https://github.com/aws/aws-neuron-sdk/blob/master/docs/neuron-container-tools/tutorial-k8s.md")
 		}
+	} else if api.HasInstanceType(nodeGroup, utils.IsGPUInstanceType) {
+		// if GPU instance type, give instructions
+		logger.Info("as you are using a GPU optimized instance type you will need to install NVIDIA Kubernetes device plugin.")
+		logger.Info("\t see the following page for instructions: https://github.com/NVIDIA/k8s-device-plugin")
 	}
-	return false
-}
-
-func isDeprecatedVersion(version string) bool {
-	for _, v := range api.DeprecatedVersions() {
-		if version == v {
-			return true
-		}
-	}
-	return false
 }

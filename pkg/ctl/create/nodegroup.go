@@ -7,9 +7,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
 	"github.com/weaveworks/eksctl/pkg/cfn/manager"
+	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils/filter"
 	"github.com/weaveworks/eksctl/pkg/eks"
-	"github.com/weaveworks/eksctl/pkg/ssh"
 	"github.com/weaveworks/eksctl/pkg/utils/names"
 	"github.com/weaveworks/eksctl/pkg/vpc"
 
@@ -17,12 +18,12 @@ import (
 	"github.com/weaveworks/eksctl/pkg/authconfigmap"
 	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils"
 	"github.com/weaveworks/eksctl/pkg/printers"
-	"github.com/weaveworks/eksctl/pkg/utils"
 )
 
 type createNodeGroupParams struct {
-	updateAuthConfigMap bool
-	managed             bool
+	updateAuthConfigMap       bool
+	managed                   bool
+	installNeuronDevicePlugin bool
 }
 
 func createNodeGroupCmd(cmd *cmdutils.Cmd) {
@@ -51,8 +52,8 @@ func createNodeGroupCmdWithRunFunc(cmd *cmdutils.Cmd, runFunc func(cmd *cmdutils
 
 	cmd.FlagSetGroup.InFlagSet("General", func(fs *pflag.FlagSet) {
 		fs.StringVar(&cfg.Metadata.Name, "cluster", "", "name of the EKS cluster to add the nodegroup to")
-		fs.StringToStringVarP(&cfg.Metadata.Tags, "tags", "", map[string]string{}, `A list of KV pairs used to tag the AWS resources (e.g. "Owner=John Doe,Team=Some Team")`)
-		cmdutils.AddRegionFlag(fs, cmd.ProviderConfig)
+		cmdutils.AddStringToStringVarPFlag(fs, &cfg.Metadata.Tags, "tags", "", map[string]string{}, "Used to tag the AWS resources")
+		cmdutils.AddRegionFlag(fs, &cmd.ProviderConfig)
 		cmdutils.AddVersionFlag(fs, cfg.Metadata, `for nodegroups "auto" and "latest" can be used to automatically inherit version from the control plane or force latest`)
 		cmdutils.AddConfigFileFlag(fs, &cmd.ClusterConfigFile)
 		cmdutils.AddNodeGroupFilterFlags(fs, &cmd.Include, &cmd.Exclude)
@@ -66,15 +67,16 @@ func createNodeGroupCmdWithRunFunc(cmd *cmdutils.Cmd, runFunc func(cmd *cmdutils
 		fs.BoolVarP(&params.managed, "managed", "", false, "Create EKS-managed nodegroup")
 	})
 
-	cmd.FlagSetGroup.InFlagSet("IAM addons", func(fs *pflag.FlagSet) {
+	cmd.FlagSetGroup.InFlagSet("Addons", func(fs *pflag.FlagSet) {
 		cmdutils.AddCommonCreateNodeGroupIAMAddonsFlags(fs, ng)
+		fs.BoolVarP(&params.installNeuronDevicePlugin, "install-neuron-plugin", "", true, "Install Neuron plugin for Inferentia nodes")
 	})
 
-	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, cmd.ProviderConfig, true)
+	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, &cmd.ProviderConfig, true)
 }
 
 func doCreateNodeGroups(cmd *cmdutils.Cmd, ng *api.NodeGroup, params createNodeGroupParams) error {
-	ngFilter := cmdutils.NewNodeGroupFilter()
+	ngFilter := filter.NewNodeGroupFilter()
 
 	if err := cmdutils.NewCreateNodeGroupLoader(cmd, ng, ngFilter, params.managed).Load(); err != nil {
 		return err
@@ -109,7 +111,7 @@ func doCreateNodeGroups(cmd *cmdutils.Cmd, ng *api.NodeGroup, params createNodeG
 
 	stackManager := ctl.NewStackManager(cfg)
 
-	if err := ngFilter.SetExcludeExistingFilter(stackManager); err != nil {
+	if err := ngFilter.SetOnlyLocal(stackManager, cfg); err != nil {
 		return err
 	}
 
@@ -135,22 +137,10 @@ func doCreateNodeGroups(cmd *cmdutils.Cmd, ng *api.NodeGroup, params createNodeG
 			return err
 		}
 		logger.Info("nodegroup %q will use %q [%s/%s]", ng.Name, ng.AMI, ng.AMIFamily, cfg.Metadata.Version)
-
-		// load or use SSH key - name includes cluster name and the
-		// fingerprint, so if unique keys provided, each will get
-		// loaded and used as intended and there is no need to have
-		// nodegroup name in the key name
-		publicKeyName, err := ssh.LoadKey(ng.SSH, meta.Name, ng.Name, ctl.Provider.EC2())
-		if err != nil {
-			return err
-		}
-		if publicKeyName != "" {
-			ng.SSH.PublicKeyName = &publicKeyName
-		}
 	}
 
-	managedService := eks.NewNodeGroupService(cfg, ctl.Provider.EC2())
-	if err := managedService.NormalizeManaged(cfg.ManagedNodeGroups); err != nil {
+	nodeGroupService := eks.NewNodeGroupService(cfg, ctl.Provider.EC2())
+	if err := nodeGroupService.Normalize(cmdutils.ToBaseNodeGroups(cfg)); err != nil {
 		return err
 	}
 
@@ -220,6 +210,20 @@ func doCreateNodeGroups(cmd *cmdutils.Cmd, ng *api.NodeGroup, params createNodeG
 			return err
 		}
 
+		tasks := ctl.ClusterTasksForNodeGroups(cfg, params.installNeuronDevicePlugin)
+		logger.Info(tasks.Describe())
+		errs := tasks.DoAllSync()
+		if len(errs) > 0 {
+			logger.Info("%d error(s) occurred and nodegroups haven't been created properly, you may wish to check CloudFormation console", len(errs))
+			logger.Info("to cleanup resources, run 'eksctl delete nodegroup --region=%s --cluster=%s --name=<name>' for each of the failed nodegroups", cfg.Metadata.Region, cfg.Metadata.Name)
+			for _, err := range errs {
+				if err != nil {
+					logger.Critical("%s\n", err.Error())
+				}
+			}
+			return fmt.Errorf("failed to create nodegroups for cluster %q", cfg.Metadata.Name)
+		}
+
 		for _, ng := range cfg.NodeGroups {
 			if params.updateAuthConfigMap {
 				// authorise nodes to join
@@ -233,17 +237,18 @@ func doCreateNodeGroups(cmd *cmdutils.Cmd, ng *api.NodeGroup, params createNodeG
 				}
 			}
 
-			// if GPU instance type, give instructions
-			if utils.IsGPUInstanceType(ng.InstanceType) || (ng.InstancesDistribution != nil && utils.HasGPUInstanceType(ng.InstancesDistribution.InstanceTypes)) {
-				logger.Info("as you are using a GPU optimized instance type you will need to install NVIDIA Kubernetes device plugin.")
-				logger.Info("\t see the following page for instructions: https://github.com/NVIDIA/k8s-device-plugin")
-			}
+			showDevicePluginMessageForNodeGroup(ng, params.installNeuronDevicePlugin)
 		}
 		logger.Success("created %d nodegroup(s) in cluster %q", len(cfg.NodeGroups), cfg.Metadata.Name)
 
 		for _, ng := range cfg.ManagedNodeGroups {
 			if err := ctl.WaitForNodes(clientSet, ng); err != nil {
-				return err
+				if cfg.PrivateCluster.Enabled {
+					logger.Info("error waiting for nodes to join the cluster; this command was likely run from outside the cluster's VPC as the API server is not reachable, nodegroup(s) should still be able to join the cluster, underlying error is: %v", err)
+					break
+				} else {
+					return err
+				}
 			}
 		}
 
