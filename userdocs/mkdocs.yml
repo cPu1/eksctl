@@ -8,11 +8,11 @@ docs_dir: src
 edit_uri: ""
 
 extra_css:
-    - assets/_custom.scss
+    - extra.css
+    - usage/schema.css
 
 nav:
     - Introduction: introduction.md
-    - 'GitOps Quickstart': gitops-quickstart.md
     - Usage:
         - usage/creating-and-managing-clusters.md
         - usage/managing-nodegroups.md
@@ -21,6 +21,7 @@ nav:
         - usage/custom-ami-support.md
         - usage/vpc-networking.md
         - usage/gpu-support.md
+        - usage/arm-support.md
         - usage/spot-instances.md
         - IAM:
             - usage/iam-permissions-boundary.md
@@ -31,11 +32,14 @@ nav:
         - usage/cloudwatch-cluster-logging.md
         - usage/windows-worker-nodes.md
         - usage/eks-managed-nodes.md
+        - usage/eks-private-cluster.md
         - usage/fargate-support.md
+        - usage/gitops.md
         - usage/schema.md
         - usage/troubleshooting.md
+        - usage/minimum-iam-policies.md
         - FAQ: usage/faq.md
-        - Experimental: usage/experimental/gitops.md
+    - 'GitOps Quickstart': gitops-quickstart.md
     - Examples:
         - examples/reusing-iam-and-vpc.md
     - Community: community.md
@@ -56,6 +60,7 @@ theme:
     palette:
       primary: 'white'
       accent: 'light blue'
+      scheme: preference
     highlightjs: true
     hljs_languages:
         - yaml

@@ -4,16 +4,18 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/awslabs/goformation/v4"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
+	"github.com/weaveworks/goformation/v4"
+	gfneks "github.com/weaveworks/goformation/v4/cloudformation/eks"
+	gfnt "github.com/weaveworks/goformation/v4/cloudformation/types"
 )
 
 func TestManagedPolicyResources(t *testing.T) {
 	iamRoleTests := []struct {
 		addons                  api.NodeGroupIAMAddonPolicies
 		attachPolicyARNs        []string
-		expectedManagedPolicies []string
+		expectedManagedPolicies []*gfnt.Value
 		description             string
 	}{
 		{
@@ -38,13 +40,13 @@ func TestManagedPolicyResources(t *testing.T) {
 		},
 		{
 			attachPolicyARNs:        []string{"AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy"},
-			expectedManagedPolicies: prefixPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy"),
+			expectedManagedPolicies: subs(prefixPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy")),
 			description:             "Custom policies",
 		},
 		// should not attach any additional policies
 		{
 			attachPolicyARNs:        []string{"CloudWatchAgentServerPolicy"},
-			expectedManagedPolicies: prefixPolicies("CloudWatchAgentServerPolicy"),
+			expectedManagedPolicies: subs(prefixPolicies("CloudWatchAgentServerPolicy")),
 			description:             "Custom policies",
 		},
 		// no duplicate values
@@ -53,7 +55,7 @@ func TestManagedPolicyResources(t *testing.T) {
 			addons: api.NodeGroupIAMAddonPolicies{
 				ImageBuilder: api.Enabled(),
 			},
-			expectedManagedPolicies: prefixPolicies("AmazonEC2ContainerRegistryPowerUser"),
+			expectedManagedPolicies: subs(prefixPolicies("AmazonEC2ContainerRegistryPowerUser")),
 			description:             "Duplicate policies",
 		},
 		{
@@ -62,34 +64,34 @@ func TestManagedPolicyResources(t *testing.T) {
 				ImageBuilder: api.Enabled(),
 				CloudWatch:   api.Enabled(),
 			},
-			expectedManagedPolicies: prefixPolicies("CloudWatchAgentServerPolicy", "AmazonEC2ContainerRegistryPowerUser"),
+			expectedManagedPolicies: subs(prefixPolicies("CloudWatchAgentServerPolicy", "AmazonEC2ContainerRegistryPowerUser")),
 			description:             "Multiple duplicate policies",
 		},
 	}
 
 	for i, tt := range iamRoleTests {
 		t.Run(fmt.Sprintf("%d: %s", i, tt.description), func(t *testing.T) {
-			assert := assert.New(t)
+			require := require.New(t)
 			clusterConfig := api.NewClusterConfig()
 
 			ng := api.NewManagedNodeGroup()
 			ng.IAM.WithAddonPolicies = tt.addons
 			ng.IAM.AttachPolicyARNs = prefixPolicies(tt.attachPolicyARNs...)
 
-			stack := NewManagedNodeGroup(clusterConfig, ng, "iam-test")
+			stack := NewManagedNodeGroup(clusterConfig, ng, nil, "iam-test")
 			err := stack.AddAllResources()
-			assert.Nil(err)
+			require.Nil(err)
 
 			bytes, err := stack.RenderJSON()
-			assert.NoError(err)
+			require.NoError(err)
 
 			template, err := goformation.ParseJSON(bytes)
-			assert.NoError(err)
+			require.NoError(err)
 
 			role, ok := template.GetAllIAMRoleResources()["NodeInstanceRole"]
-			assert.True(ok)
+			require.True(ok)
 
-			assert.ElementsMatch(tt.expectedManagedPolicies, role.ManagedPolicyArns)
+			require.ElementsMatch(tt.expectedManagedPolicies, role.ManagedPolicyArns.Raw().(gfnt.Slice))
 
 		})
 	}
@@ -101,58 +103,60 @@ func TestManagedNodeRole(t *testing.T) {
 		description         string
 		nodeGroup           *api.ManagedNodeGroup
 		expectedNewRole     bool
-		expectedNodeRoleARN string
+		expectedNodeRoleARN *gfnt.Value
 	}{
 		{
 			description: "InstanceRoleARN is not provided",
 			nodeGroup: &api.ManagedNodeGroup{
-				ScalingConfig: &api.ScalingConfig{},
-				SSH: &api.NodeGroupSSH{
-					Allow: api.Disabled(),
-				},
-				IAM: &api.NodeGroupIAM{},
+				NodeGroupBase: &api.NodeGroupBase{},
 			},
 			expectedNewRole:     true,
-			expectedNodeRoleARN: fmt.Sprintf("\"Fn::GetAtt\":\"%s.Arn\"", cfnIAMInstanceRoleName), // creating new role
+			expectedNodeRoleARN: gfnt.MakeFnGetAtt(cfnIAMInstanceRoleName, gfnt.NewString("Arn")), // creating new role
 		},
 		{
 			description: "InstanceRoleARN is provided",
 			nodeGroup: &api.ManagedNodeGroup{
-				ScalingConfig: &api.ScalingConfig{},
-				SSH: &api.NodeGroupSSH{
-					Allow: api.Disabled(),
-				},
-				IAM: &api.NodeGroupIAM{
-					InstanceRoleARN: "arn::DUMMY::DUMMYROLE",
+				NodeGroupBase: &api.NodeGroupBase{
+					IAM: &api.NodeGroupIAM{
+						InstanceRoleARN: "arn::DUMMY::DUMMYROLE",
+					},
 				},
 			},
 			expectedNewRole:     false,
-			expectedNodeRoleARN: "arn::DUMMY::DUMMYROLE", // using the provided role
+			expectedNodeRoleARN: gfnt.NewString("arn::DUMMY::DUMMYROLE"), // using the provided role
 		},
 	}
 
 	for i, tt := range nodeRoleTests {
 		t.Run(fmt.Sprintf("%d: %s", i, tt.description), func(t *testing.T) {
-			stack := NewManagedNodeGroup(api.NewClusterConfig(), tt.nodeGroup, "iam-test")
+			require := require.New(t)
+			clusterConfig := api.NewClusterConfig()
+			api.SetManagedNodeGroupDefaults(tt.nodeGroup, clusterConfig.Metadata)
+			stack := NewManagedNodeGroup(clusterConfig, tt.nodeGroup, nil, "iam-test")
 			err := stack.AddAllResources()
-			assert.NoError(t, err)
+			require.NoError(err)
 
 			bytes, err := stack.RenderJSON()
-			assert.NoError(t, err)
+			require.NoError(err)
 
 			template, err := goformation.ParseJSON(bytes)
-			assert.Contains(t, string(bytes), tt.expectedNodeRoleARN)
-			assert.NoError(t, err)
-			_, ok := template.GetAllIAMRoleResources()[cfnIAMInstanceRoleName]
-			assert.Equal(t, tt.expectedNewRole, ok)
+			require.NoError(err)
+			ngResource, ok := template.Resources["ManagedNodeGroup"]
+			require.True(ok)
+			ng, ok := ngResource.(*gfneks.Nodegroup)
+			require.True(ok)
+			require.Equal(tt.expectedNodeRoleARN, ng.NodeRole)
+
+			_, ok = template.GetAllIAMRoleResources()[cfnIAMInstanceRoleName]
+			require.Equal(tt.expectedNewRole, ok)
 		})
 	}
 }
 
-func makePartitionedPolicies(policies ...string) []string {
-	var partitionedPolicies []string
+func makePartitionedPolicies(policies ...string) []*gfnt.Value {
+	var partitionedPolicies []*gfnt.Value
 	for _, policy := range policies {
-		partitionedPolicies = append(partitionedPolicies, "arn:${AWS::Partition}:iam::aws:policy/"+policy)
+		partitionedPolicies = append(partitionedPolicies, gfnt.MakeFnSubString("arn:${AWS::Partition}:iam::aws:policy/"+policy))
 	}
 	return partitionedPolicies
 }
@@ -163,4 +167,12 @@ func prefixPolicies(policies ...string) []string {
 		prefixedPolicies = append(prefixedPolicies, "arn:aws:iam::aws:policy/"+policy)
 	}
 	return prefixedPolicies
+}
+
+func subs(ss []string) []*gfnt.Value {
+	var subs []*gfnt.Value
+	for _, s := range ss {
+		subs = append(subs, gfnt.NewString(s))
+	}
+	return subs
 }

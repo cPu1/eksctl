@@ -16,7 +16,44 @@ import (
 	"github.com/aws/aws-sdk-go/service/sts/stsiface"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/kops/util/pkg/slice"
+)
+
+// Values for `KubernetesVersion`
+// All valid values should go in this block
+const (
+	Version1_14 = "1.14"
+
+	Version1_15 = "1.15"
+
+	Version1_16 = "1.16"
+
+	Version1_17 = "1.17"
+
+	// DefaultVersion (default)
+	DefaultVersion = Version1_17
+
+	LatestVersion = Version1_17
+)
+
+// No longer supported versions
+const (
+	// Version1_10 represents Kubernetes version 1.10.x
+	Version1_10 = "1.10"
+
+	// Version1_11 represents Kubernetes version 1.11.x
+	Version1_11 = "1.11"
+
+	// Version1_12 represents Kubernetes version 1.12.x
+	Version1_12 = "1.12"
+
+	// Version1_13 represents Kubernetes version 1.13.x
+	Version1_13 = "1.13"
+)
+
+// Not yet supported versions
+const (
+	// Version1_18 represents Kubernetes version 1.18.x
+	Version1_18 = "1.18"
 )
 
 const (
@@ -53,6 +90,9 @@ const (
 	// RegionEUCentral1 represents the EU Central Region Frankfurt
 	RegionEUCentral1 = "eu-central-1"
 
+	// RegionEUSouth1 represents te Eu South Region Milan
+	RegionEUSouth1 = "eu-south-1"
+
 	// RegionAPNorthEast1 represents the Asia-Pacific North East Region Tokyo
 	RegionAPNorthEast1 = "ap-northeast-1"
 
@@ -77,56 +117,29 @@ const (
 	// RegionSAEast1 represents the South America Region Sao Paulo
 	RegionSAEast1 = "sa-east-1"
 
+	// RegionAFSouth1 represents the Africa Region Cape Town
+	RegionAFSouth1 = "af-south-1"
+
 	// RegionCNNorthwest1 represents the China region Ningxia
 	RegionCNNorthwest1 = "cn-northwest-1"
 
 	// RegionCNNorth1 represents the China region Beijing
 	RegionCNNorth1 = "cn-north-1"
 
+	// RegionUSGovWest1 represents the region GovCloud (US-West)
+	RegionUSGovWest1 = "us-gov-west-1"
+
+	// RegionUSGovEast1 represents the region GovCloud (US-East)
+	RegionUSGovEast1 = "us-gov-east-1"
+
 	// DefaultRegion defines the default region, where to deploy the EKS cluster
 	DefaultRegion = RegionUSWest2
-
-	// Version1_10 represents Kubernetes version 1.10.x
-	Version1_10 = "1.10"
-
-	// Version1_11 represents Kubernetes version 1.11.x
-	Version1_11 = "1.11"
-
-	// Version1_12 represents Kubernetes version 1.12.x
-	Version1_12 = "1.12"
-
-	// Version1_13 represents Kubernetes version 1.13.x
-	Version1_13 = "1.13"
-
-	// Version1_14 represents Kubernetes version 1.14.x
-	Version1_14 = "1.14"
-
-	// Version1_15 represents Kubernetes version 1.15.x
-	Version1_15 = "1.15"
-
-	// Version1_16 represents Kubernetes version 1.16.x
-	Version1_16 = "1.16"
-
-	// DefaultVersion represents default Kubernetes version supported by EKS
-	DefaultVersion = Version1_15
-
-	// LatestVersion represents latest Kubernetes version supported by EKS
-	LatestVersion = Version1_16
 
 	// DefaultNodeType is the default instance type to use for nodes
 	DefaultNodeType = "m5.large"
 
 	// DefaultNodeCount defines the default number of nodes to be created
 	DefaultNodeCount = 2
-
-	// NodeVolumeTypeGP2 is General Purpose SSD
-	NodeVolumeTypeGP2 = "gp2"
-	// NodeVolumeTypeIO1 is Provisioned IOPS SSD
-	NodeVolumeTypeIO1 = "io1"
-	// NodeVolumeTypeSC1 is Throughput Optimized HDD
-	NodeVolumeTypeSC1 = "sc1"
-	// NodeVolumeTypeST1 is Cold HDD
-	NodeVolumeTypeST1 = "st1"
 
 	// DefaultNodeImageFamily defines the default image family for the worker nodes
 	DefaultNodeImageFamily = NodeImageFamilyAmazonLinux2
@@ -139,9 +152,10 @@ const (
 
 	// NodeImageFamilyWindowsServer2019CoreContainer represents Windows 2019 core container family
 	NodeImageFamilyWindowsServer2019CoreContainer = "WindowsServer2019CoreContainer"
-
 	// NodeImageFamilyWindowsServer2019FullContainer represents Windows 2019 full container family
 	NodeImageFamilyWindowsServer2019FullContainer = "WindowsServer2019FullContainer"
+	// NodeImageFamilyWindowsServer1909CoreContainer represents Windows 1909 core container family
+	NodeImageFamilyWindowsServer1909CoreContainer = "WindowsServer1909CoreContainer"
 
 	// NodeImageResolverStatic represents static AMI resolver (see ami package)
 	NodeImageResolverStatic = "static"
@@ -172,7 +186,7 @@ const (
 	// OldNodeGroupIDTag defines the old version of tag of the nodegroup name
 	OldNodeGroupIDTag = "eksctl.cluster.k8s.io/v1alpha1/nodegroup-id"
 
-	// IAMServiceAccountNameTag defines the tag of the iamserviceaccount name
+	// IAMServiceAccountNameTag defines the tag of the IAM service account name
 	IAMServiceAccountNameTag = "alpha.eksctl.io/iamserviceaccount-name"
 
 	// ClusterNameLabel defines the tag of the cluster name
@@ -180,15 +194,6 @@ const (
 
 	// NodeGroupNameLabel defines the label of the nodegroup name
 	NodeGroupNameLabel = "alpha.eksctl.io/nodegroup-name"
-
-	// ClusterHighlyAvailableNAT defines the highly available NAT configuration option
-	ClusterHighlyAvailableNAT = "HighlyAvailable"
-
-	// ClusterSingleNAT defines the single NAT configuration option
-	ClusterSingleNAT = "Single"
-
-	// ClusterDisableNAT defines the disabled NAT configuration option
-	ClusterDisableNAT = "Disable"
 
 	// SpotAllocationStrategyLowestPrice defines the ASG spot allocation strategy of lowest-price
 	SpotAllocationStrategyLowestPrice = "lowest-price"
@@ -211,6 +216,30 @@ const (
 
 	// eksResourceAccountCNNorth1 defines the AWS EKS account ID that provides node resources in cn-north-1
 	eksResourceAccountCNNorth1 = "918309763551"
+
+	// eksResourceAccountAFSouth1 defines the AWS EKS account ID that provides node resources in af-south-1
+	eksResourceAccountAFSouth1 = "877085696533"
+
+	// eksResourceAccountEUSouth1 defines the AWS EKS account ID that provides node resources in eu-south-1
+	eksResourceAccountEUSouth1 = "590381155156"
+
+	// eksResourceAccountUSGovWest1 defines the AWS EKS account ID that provides node resources in us-gov-west-1
+	eksResourceAccountUSGovWest1 = "013241004608"
+
+	// eksResourceAccountUSGovEast1 defines the AWS EKS account ID that provides node resources in us-gov-east-1
+	eksResourceAccountUSGovEast1 = "151742754352"
+)
+
+// Values for `VolumeType`
+const (
+	// NodeVolumeTypeGP2 is General Purpose SSD (default)
+	NodeVolumeTypeGP2 = "gp2"
+	// NodeVolumeTypeIO1 is Provisioned IOPS SSD
+	NodeVolumeTypeIO1 = "io1"
+	// NodeVolumeTypeSC1 is Throughput Optimized HDD
+	NodeVolumeTypeSC1 = "sc1"
+	// NodeVolumeTypeST1 is Cold HDD
+	NodeVolumeTypeST1 = "st1"
 )
 
 // NodeGroupType defines the nodegroup type
@@ -234,7 +263,7 @@ var (
 	DefaultNodeVolumeType = NodeVolumeTypeGP2
 
 	// DefaultNodeVolumeSize defines the default root volume size
-	DefaultNodeVolumeSize = 0
+	DefaultNodeVolumeSize = 80
 )
 
 // Enabled return pointer to true value
@@ -273,6 +302,7 @@ func SupportedRegions() []string {
 		RegionEUWest3,
 		RegionEUNorth1,
 		RegionEUCentral1,
+		RegionEUSouth1,
 		RegionAPNorthEast1,
 		RegionAPNorthEast2,
 		RegionAPSouthEast1,
@@ -281,8 +311,11 @@ func SupportedRegions() []string {
 		RegionAPEast1,
 		RegionMESouth1,
 		RegionSAEast1,
+		RegionAFSouth1,
 		RegionCNNorthwest1,
 		RegionCNNorth1,
+		RegionUSGovWest1,
+		RegionUSGovEast1,
 	}
 }
 
@@ -294,17 +327,38 @@ func DeprecatedVersions() []string {
 		Version1_10,
 		Version1_11,
 		Version1_12,
+		Version1_13,
 	}
+}
+
+// IsDeprecatedVersion returns true if the given Kubernetes version has been deprecated in EKS
+func IsDeprecatedVersion(version string) bool {
+	for _, v := range DeprecatedVersions() {
+		if version == v {
+			return true
+		}
+	}
+	return false
 }
 
 // SupportedVersions are the versions of Kubernetes that EKS supports
 func SupportedVersions() []string {
 	return []string{
-		Version1_13,
 		Version1_14,
 		Version1_15,
 		Version1_16,
+		Version1_17,
 	}
+}
+
+// IsSupportedVersion returns true if the given version is a Kubernetes supported by eksctl and EKS
+func IsSupportedVersion(version string) bool {
+	for _, v := range SupportedVersions() {
+		if version == v {
+			return true
+		}
+	}
+	return false
 }
 
 // SupportedNodeVolumeTypes are the volume types that can be used for a node root volume
@@ -327,7 +381,12 @@ func supportedSpotAllocationStrategies() []string {
 
 // isSpotAllocationStrategySupported returns true if the spot allocation strategy is supported for ASG
 func isSpotAllocationStrategySupported(allocationStrategy string) bool {
-	return slice.Contains(supportedSpotAllocationStrategies(), allocationStrategy)
+	for _, strategy := range supportedSpotAllocationStrategies() {
+		if strategy == allocationStrategy {
+			return true
+		}
+	}
+	return false
 }
 
 // EKSResourceAccountID provides worker node resources(ami/ecr image) in different aws account
@@ -342,15 +401,26 @@ func EKSResourceAccountID(region string) string {
 		return eksResourceAccountCNNorthWest1
 	case RegionCNNorth1:
 		return eksResourceAccountCNNorth1
+	case RegionUSGovWest1:
+		return eksResourceAccountUSGovWest1
+	case RegionUSGovEast1:
+		return eksResourceAccountUSGovEast1
+	case RegionAFSouth1:
+		return eksResourceAccountAFSouth1
+	case RegionEUSouth1:
+		return eksResourceAccountEUSouth1
 	default:
 		return eksResourceAccountStandard
 	}
 }
 
-// ClusterMeta is what identifies a cluster
+// ClusterMeta contains general cluster information
 type ClusterMeta struct {
-	Name   string `json:"name"`
+	// +required
+	Name string `json:"name"`
+	// +required
 	Region string `json:"region"`
+	// Valid variants are `KubernetesVersion` constants
 	// +optional
 	Version string `json:"version,omitempty"`
 	// +optional
@@ -427,8 +497,9 @@ type ProviderConfig struct {
 
 // ClusterConfig is a simple config, to be replaced with Cluster API
 type ClusterConfig struct {
-	metav1.TypeMeta `json:",inline"`
+	metav1.TypeMeta
 
+	// +required
 	Metadata *ClusterMeta `json:"metadata"`
 
 	// +optional
@@ -437,9 +508,18 @@ type ClusterConfig struct {
 	// +optional
 	VPC *ClusterVPC `json:"vpc,omitempty"`
 
+	// PrivateCluster allows configuring a fully-private cluster
+	// in which no node has outbound internet access, and private access
+	// to AWS services is enabled via VPC endpoints
+	// +optional
+	PrivateCluster *PrivateCluster `json:"privateCluster,omitempty"`
+
+	// NodeGroups For information and examples see [nodegroups](/usage/managing-nodegroups)
 	// +optional
 	NodeGroups []*NodeGroup `json:"nodeGroups,omitempty"`
 
+	// ManagedNodeGroups See [Nodegroups usage](/usage/managing-nodegroups)
+	// and [managed nodegroups](/usage/eks-managed-nodes/)
 	// +optional
 	ManagedNodeGroups []*ManagedNodeGroup `json:"managedNodeGroups,omitempty"`
 
@@ -449,6 +529,7 @@ type ClusterConfig struct {
 	// +optional
 	AvailabilityZones []string `json:"availabilityZones,omitempty"`
 
+	// See [CloudWatch support](/usage/cloudwatch-cluster-logging/)
 	// +optional
 	CloudWatch *ClusterCloudWatch `json:"cloudWatch,omitempty"`
 
@@ -456,13 +537,16 @@ type ClusterConfig struct {
 	SecretsEncryption *SecretsEncryption `json:"secretsEncryption,omitempty"`
 
 	Status *ClusterStatus `json:"status,omitempty"`
+
+	// +optional
+	Git *Git `json:"git,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // ClusterConfigList is a list of ClusterConfigs
 type ClusterConfigList struct {
-	metav1.TypeMeta `json:",inline"`
+	metav1.TypeMeta
 	metav1.ListMeta `json:"metadata"`
 
 	Items []ClusterConfig `json:"items"`
@@ -490,6 +574,7 @@ func NewClusterConfig() *ClusterConfig {
 		CloudWatch: &ClusterCloudWatch{
 			ClusterLogging: &ClusterCloudWatchLogging{},
 		},
+		PrivateCluster: &PrivateCluster{},
 	}
 
 	return cfg
@@ -505,7 +590,7 @@ func NewClusterVPC() *ClusterVPC {
 		},
 		NAT:              DefaultClusterNAT(),
 		AutoAllocateIPv6: Disabled(),
-		ClusterEndpoints: ClusterEndpointAccessDefaults(),
+		ClusterEndpoints: &ClusterEndpoints{},
 	}
 }
 
@@ -519,37 +604,40 @@ func (c *ClusterConfig) AppendAvailabilityZone(newAZ string) {
 	c.AvailabilityZones = append(c.AvailabilityZones, newAZ)
 }
 
-// NewNodeGroup creates new nodegroup, and returns pointer to it
+// NewNodeGroup creates a new NodeGroup, and returns a pointer to it
 func NewNodeGroup() *NodeGroup {
 	return &NodeGroup{
-		PrivateNetworking: false,
-		SecurityGroups: &NodeGroupSGs{
-			AttachIDs:  []string{},
-			WithLocal:  Enabled(),
-			WithShared: Enabled(),
-		},
-		DesiredCapacity: nil,
-		InstanceType:    DefaultNodeType,
-		VolumeSize:      &DefaultNodeVolumeSize,
-		VolumeType:      &DefaultNodeVolumeType,
-		IAM: &NodeGroupIAM{
-			WithAddonPolicies: NodeGroupIAMAddonPolicies{
-				ImageBuilder: Disabled(),
-				AutoScaler:   Disabled(),
-				ExternalDNS:  Disabled(),
-				CertManager:  Disabled(),
-				AppMesh:      Disabled(),
-				EBS:          Disabled(),
-				FSX:          Disabled(),
-				EFS:          Disabled(),
-				ALBIngress:   Disabled(),
-				XRay:         Disabled(),
-				CloudWatch:   Disabled(),
+		NodeGroupBase: &NodeGroupBase{
+			PrivateNetworking: false,
+			InstanceType:      DefaultNodeType,
+			VolumeSize:        &DefaultNodeVolumeSize,
+			IAM: &NodeGroupIAM{
+				WithAddonPolicies: NodeGroupIAMAddonPolicies{
+					ImageBuilder:   Disabled(),
+					AutoScaler:     Disabled(),
+					ExternalDNS:    Disabled(),
+					CertManager:    Disabled(),
+					AppMesh:        Disabled(),
+					AppMeshPreview: Disabled(),
+					EBS:            Disabled(),
+					FSX:            Disabled(),
+					EFS:            Disabled(),
+					ALBIngress:     Disabled(),
+					XRay:           Disabled(),
+					CloudWatch:     Disabled(),
+				},
 			},
-		},
-		SSH: &NodeGroupSSH{
-			Allow:         Disabled(),
-			PublicKeyPath: &DefaultNodeSSHPublicKeyPath,
+			ScalingConfig: &ScalingConfig{},
+			SSH: &NodeGroupSSH{
+				Allow:         Disabled(),
+				PublicKeyPath: &DefaultNodeSSHPublicKeyPath,
+			},
+			VolumeType: &DefaultNodeVolumeType,
+			SecurityGroups: &NodeGroupSGs{
+				AttachIDs:  []string{},
+				WithLocal:  Enabled(),
+				WithShared: Enabled(),
+			},
 		},
 	}
 }
@@ -559,28 +647,34 @@ func NewManagedNodeGroup() *ManagedNodeGroup {
 	var (
 		publicKey  = DefaultNodeSSHPublicKeyPath
 		volumeSize = DefaultNodeVolumeSize
+		volumeType = DefaultNodeVolumeType
 	)
 	return &ManagedNodeGroup{
-		VolumeSize:    &volumeSize,
-		ScalingConfig: &ScalingConfig{},
-		SSH: &NodeGroupSSH{
-			Allow:         Disabled(),
-			PublicKeyName: &publicKey,
-		},
-		IAM: &NodeGroupIAM{
-			WithAddonPolicies: NodeGroupIAMAddonPolicies{
-				ImageBuilder: Disabled(),
-				AutoScaler:   Disabled(),
-				ExternalDNS:  Disabled(),
-				CertManager:  Disabled(),
-				AppMesh:      Disabled(),
-				EBS:          Disabled(),
-				FSX:          Disabled(),
-				EFS:          Disabled(),
-				ALBIngress:   Disabled(),
-				XRay:         Disabled(),
-				CloudWatch:   Disabled(),
+		NodeGroupBase: &NodeGroupBase{
+			VolumeSize: &volumeSize,
+			VolumeType: &volumeType,
+			SSH: &NodeGroupSSH{
+				Allow:         Disabled(),
+				PublicKeyName: &publicKey,
 			},
+			IAM: &NodeGroupIAM{
+				WithAddonPolicies: NodeGroupIAMAddonPolicies{
+					ImageBuilder:   Disabled(),
+					AutoScaler:     Disabled(),
+					ExternalDNS:    Disabled(),
+					CertManager:    Disabled(),
+					AppMesh:        Disabled(),
+					AppMeshPreview: Disabled(),
+					EBS:            Disabled(),
+					FSX:            Disabled(),
+					EFS:            Disabled(),
+					ALBIngress:     Disabled(),
+					XRay:           Disabled(),
+					CloudWatch:     Disabled(),
+				},
+			},
+			ScalingConfig:  &ScalingConfig{},
+			SecurityGroups: &NodeGroupSGs{},
 		},
 	}
 }
@@ -595,120 +689,176 @@ func (c *ClusterConfig) NewNodeGroup() *NodeGroup {
 	return ng
 }
 
-// NodeGroup holds all configuration attributes that are
+// NodeGroup holds configuration attributes that are
 // specific to a nodegroup
 type NodeGroup struct {
-	Name string `json:"name"`
-	// +optional
-	AMI string `json:"ami,omitempty"`
-	// +optional
-	AMIFamily string `json:"amiFamily,omitempty"`
-	// +optional
-	InstanceType string `json:"instanceType,omitempty"`
+	*NodeGroupBase
+
 	//+optional
 	InstancesDistribution *NodeGroupInstancesDistribution `json:"instancesDistribution,omitempty"`
-	// +optional
-	AvailabilityZones []string `json:"availabilityZones,omitempty"`
-	// +optional
-	Tags map[string]string `json:"tags,omitempty"`
-	// +optional
-	PrivateNetworking bool `json:"privateNetworking"`
 
-	// +optional
-	SecurityGroups *NodeGroupSGs `json:"securityGroups,omitempty"`
-
-	// +optional
-	DesiredCapacity *int `json:"desiredCapacity,omitempty"`
-	// +optional
-	MinSize *int `json:"minSize,omitempty"`
-	// +optional
-	MaxSize *int `json:"maxSize,omitempty"`
 	// +optional
 	ASGMetricsCollection []MetricsCollection `json:"asgMetricsCollection,omitempty"`
 
+	// CPUCredits configures [T3 Unlimited](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode.html), valid only for T-type instances
 	// +optional
-	EBSOptimized *bool `json:"ebsOptimized,omitempty"`
-
-	// +optional
-	VolumeSize *int `json:"volumeSize"`
-	// +optional
-	VolumeType *string `json:"volumeType"`
-	// +optional
-	VolumeName *string `json:"volumeName,omitempty"`
-	// +optional
-	VolumeEncrypted *bool `json:"volumeEncrypted,omitempty"`
-	// +optional
-	VolumeKmsKeyID *string `json:"volumeKmsKeyID,omitempty"`
-	// +optional
-	VolumeIOPS *int `json:"volumeIOPS"`
-
-	// +optional
-	MaxPodsPerNode int `json:"maxPodsPerNode,omitempty"`
-
-	// +optional
-	Labels map[string]string `json:"labels,omitempty"`
+	CPUCredits *string `json:"cpuCredits,omitempty"`
 
 	// +optional
 	Taints map[string]string `json:"taints,omitempty"`
 
+	// Associate load balancers with auto scaling group
 	// +optional
 	ClassicLoadBalancerNames []string `json:"classicLoadBalancerNames,omitempty"`
 
+	// Associate target group with auto scaling group
 	// +optional
 	TargetGroupARNs []string `json:"targetGroupARNs,omitempty"`
 
 	// +optional
-	SSH *NodeGroupSSH `json:"ssh,omitempty"`
-
-	// +optional
-	IAM *NodeGroupIAM `json:"iam"`
-
-	// +optional
 	Bottlerocket *NodeGroupBottlerocket `json:"bottlerocket,omitempty"`
 
-	// +optional
-	PreBootstrapCommands []string `json:"preBootstrapCommands,omitempty"`
-
-	// +optional
-	OverrideBootstrapCommand *string `json:"overrideBootstrapCommand,omitempty"`
-
+	// [Custom
+	// address](/usage/vpc-networking/#custom-cluster-dns-address) used for DNS
+	// lookups
 	// +optional
 	ClusterDNS string `json:"clusterDNS,omitempty"`
 
+	// [Customize `kubelet` config](/usage/customizing-the-kubelet/)
 	// +optional
 	KubeletExtraConfig *InlineDocument `json:"kubeletExtraConfig,omitempty"`
 }
 
-// ListOptions returns metav1.ListOptions with label selector for the nodegroup
-func (n *NodeGroup) ListOptions() metav1.ListOptions {
-	return makeListOptions(n.Name)
+// BaseNodeGroup implements NodePool
+func (n *NodeGroup) BaseNodeGroup() *NodeGroupBase {
+	return n.NodeGroupBase
 }
 
-// NameString returns common name string
-func (n *NodeGroup) NameString() string {
-	return n.Name
+// Git groups all configuration options related to enabling GitOps on a
+// cluster and linking it to a Git repository.
+// [Gitops Guide](/gitops-quickstart/)
+type Git struct {
+
+	// [Enable Repo](/usage/gitops/#installing-flux)
+	Repo *Repo `json:"repo,omitempty"`
+
+	// [Enable Repo](/usage/gitops/#installing-flux)
+	// +optional
+	Operator Operator `json:"operator,omitempty"`
+
+	// [Installing a Quickstart profile](/usage/gitops/#installing-a-quickstart-profile-in-your-cluster)
+	// +optional
+	BootstrapProfile *Profile `json:"bootstrapProfile,omitempty"` // one or many profiles to enable on this cluster once it is created
 }
 
-// Size returns the minimum nodegroup size
-func (n *NodeGroup) Size() int {
-	if n.MinSize == nil {
-		return 0
+// NewGit returns a new empty Git configuration
+func NewGit() *Git {
+	return &Git{
+		Repo:             &Repo{},
+		Operator:         Operator{},
+		BootstrapProfile: &Profile{},
 	}
-	return *n.MinSize
 }
 
-// GetAMIFamily returns the AMI family
-func (n *NodeGroup) GetAMIFamily() string {
-	return n.AMIFamily
+// Repo groups all configuration options related to a Git repository used for
+// GitOps.
+type Repo struct {
+	// The Git SSH URL to the repository which will contain the cluster configuration
+	// For example: `git@github.com:org/repo`
+	URL string `json:"url,omitempty"`
+
+	// The git branch under which cluster configuration files will be committed & pushed, e.g. master
+	// +optional
+	Branch string `json:"branch,omitempty"`
+
+	// Relative paths within the Git repository which the GitOps operator will monitor to find Kubernetes manifests to apply, e.g. ["kube-system", "base"]
+	//+optional
+	Paths []string `json:"paths,omitempty"`
+
+	// The directory under which Flux configuration files will be written, e.g. flux/
+	// +optional
+	FluxPath string `json:"fluxPath,omitempty"`
+
+	// Git user which will be used to commit changes
+	// +optional
+	User string `json:"user,omitempty"`
+
+	// Git email which will be used to commit changes
+	Email string `json:"email,omitempty"`
+
+	// Path to the private SSH key to use to authenticate
+	// +optional
+	PrivateSSHKeyPath string `json:"privateSSHKeyPath,omitempty"`
+}
+
+// Operator groups all configuration options related to the operator used to
+// keep the cluster and the Git repository in sync.
+type Operator struct {
+
+	// Commit and push Flux manifests to the Git Repo on install
+	// +optional
+	CommitOperatorManifests *bool `json:"commitOperatorManifests,omitempty"`
+
+	// Git label to keep track of Flux's sync progress; this is equivalent to overriding --git-sync-tag and --git-notes-ref in Flux
+	// +optional
+	Label string `json:"label,omitempty"`
+
+	// Cluster namespace where to install Flux and the Helm Operator e.g. flux
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+
+	// Install the Helm Operator
+	// +optional
+	WithHelm *bool `json:"withHelm,omitempty"`
+
+	// Instruct Flux to read-only mode and create the deploy key as read-only
+	// +optional
+	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
+// Profile groups all details on a quickstart profile to enable on the cluster
+// and add to the Git repository.
+type Profile struct {
+
+	// Name or URL of the Quick Start profile
+	// For example: `app-dev`
+	Source string `json:"source,omitempty"`
+
+	// Revision of the Quick Start profile. Can be a branch, tag or commit hash
+	// +optional
+	Revision string `json:"revision,omitempty"`
+
+	// Output directory for the processed profile templates (generate profile command)
+	// Defaults to `./<quickstart-repo-name>`
+	// +optional
+	OutputPath string `json:"outputPath,omitempty"`
+}
+
+// HasBootstrapProfile returns true if there is a profile with a source specified
+func (c *ClusterConfig) HasBootstrapProfile() bool {
+	return c.Git != nil && c.Git.BootstrapProfile != nil && c.Git.BootstrapProfile.Source != ""
+}
+
+// HasGitopsRepoConfigured returns true if there is a profile with a source specified
+func (c *ClusterConfig) HasGitopsRepoConfigured() bool {
+	return c.Git != nil && c.Git.Repo != nil && c.Git.Repo.URL != ""
 }
 
 type (
-	// NodeGroupSGs holds all SG attributes of a NodeGroup
+	// NodeGroupSGs controls security groups for this nodegroup
 	NodeGroupSGs struct {
+		// AttachIDs attaches additional security groups to the nodegroup
 		// +optional
 		AttachIDs []string `json:"attachIDs,omitempty"`
+		// WithShared attach the security group
+		// shared among all nodegroups in the cluster
+		// Defaults to `true`
 		// +optional
 		WithShared *bool `json:"withShared"`
+		// WithLocal attach a security group
+		// local to this nodegroup
+		// Not supported for managed nodegroups
+		// Defaults to `true`
 		// +optional
 		WithLocal *bool `json:"withLocal"`
 	}
@@ -740,6 +890,8 @@ type (
 		// +optional
 		AppMesh *bool `json:"appMesh"`
 		// +optional
+		AppMeshPreview *bool `json:"appMeshPreview"`
+		// +optional
 		EBS *bool `json:"ebs"`
 		// +optional
 		FSX *bool `json:"fsx"`
@@ -767,19 +919,26 @@ type (
 		SourceSecurityGroupIDs []string `json:"sourceSecurityGroupIds,omitempty"`
 	}
 
-	// NodeGroupInstancesDistribution holds the configuration for spot instances
+	// NodeGroupInstancesDistribution holds the configuration for [spot
+	// instances](/usage/spot-instances/)
 	NodeGroupInstancesDistribution struct {
-		//+required
+		// +required
 		InstanceTypes []string `json:"instanceTypes,omitempty"`
+		// Defaults to `on demand price`
 		// +optional
 		MaxPrice *float64 `json:"maxPrice,omitempty"`
-		//+optional
+		// Defaults to `0`
+		// +optional
 		OnDemandBaseCapacity *int `json:"onDemandBaseCapacity,omitempty"`
-		//+optional
+		// Range [0-100]
+		// Defaults to `100`
+		// +optional
 		OnDemandPercentageAboveBaseCapacity *int `json:"onDemandPercentageAboveBaseCapacity,omitempty"`
-		//+optional
+		// Range [1-20]
+		// Defaults to `2`
+		// +optional
 		SpotInstancePools *int `json:"spotInstancePools,omitempty"`
-		//+optional
+		// +optional
 		SpotAllocationStrategy *string `json:"spotAllocationStrategy,omitempty"`
 	}
 
@@ -788,13 +947,16 @@ type (
 	NodeGroupBottlerocket struct {
 		// +optional
 		EnableAdminContainer *bool `json:"enableAdminContainer,omitempty"`
+		// Settings contains any [bottlerocket
+		// settings](https://github.com/bottlerocket-os/bottlerocket/#description-of-settings)
 		// +optional
 		Settings *InlineDocument `json:"settings,omitempty"`
 	}
 )
 
-// MetricsCollection used by the scaling config
-// https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-as-metricscollection.html
+// MetricsCollection used by the scaling config,
+// see [cloudformation
+// docs](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-as-metricscollection.html)
 type MetricsCollection struct {
 	// +required
 	Granularity string `json:"granularity"`
@@ -812,46 +974,109 @@ type ScalingConfig struct {
 	MaxSize *int `json:"maxSize,omitempty"`
 }
 
-// ManagedNodeGroup defines an EKS-managed nodegroup
-// TODO Validate for unmapped fields and throw an error
-type ManagedNodeGroup struct {
+// NodePool represents a group of nodes that share the same configuration
+// Ideally the NodeGroup type should be renamed to UnmanagedNodeGroup or SelfManagedNodeGroup and this interface
+// should be called NodeGroup
+type NodePool interface {
+	// BaseNodeGroup returns the base nodegroup
+	BaseNodeGroup() *NodeGroupBase
+}
+
+// NodeGroupBase represents the base nodegroup config for self-managed and managed nodegroups
+type NodeGroupBase struct {
+	// +required
 	Name string `json:"name"`
 
+	// Specify [custom AMIs](/usage/custom-ami-support/), "auto-ssm", "auto", or "static"
 	// +optional
 	AMIFamily string `json:"amiFamily,omitempty"`
 	// +optional
 	InstanceType string `json:"instanceType,omitempty"`
-	// +optional
-	*ScalingConfig `json:",inline"`
-	// +optional
-	VolumeSize *int `json:"volumeSize,omitempty"`
+	// Limit [nodes to specific
+	// AZs](/usage/autoscaling/#zone-aware-auto-scaling)
 	// +optional
 	AvailabilityZones []string `json:"availabilityZones,omitempty"`
-	// +optional
-	SSH *NodeGroupSSH `json:"ssh,omitempty"`
 
 	// +optional
+	InstancePrefix string `json:"instancePrefix,omitempty"`
+	// +optional
+	InstanceName string `json:"instanceName,omitempty"`
+
+	// +optional
+	*ScalingConfig
+
+	// +optional
+	// VolumeSize gigabytes
+	// Defaults to `80`
+	VolumeSize *int `json:"volumeSize,omitempty"`
+	// +optional
+	// SSH configures ssh access for this nodegroup
+	SSH *NodeGroupSSH `json:"ssh,omitempty"`
+	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
+	// Enable [private
+	// networking](/usage/vpc-networking/#use-private-subnets-for-initial-nodegroup)
+	// for nodegroup
 	// +optional
 	PrivateNetworking bool `json:"privateNetworking"`
 	// +optional
 	Tags map[string]string `json:"tags,omitempty"`
 	// +optional
 	IAM *NodeGroupIAM `json:"iam,omitempty"`
+
+	// +optional
+	AMI string `json:"ami,omitempty"`
+
+	// +optional
+	SecurityGroups *NodeGroupSGs `json:"securityGroups,omitempty"`
+
+	// +optional
+	MaxPodsPerNode int `json:"maxPodsPerNode,omitempty"`
+
+	// EBSOptimized enables [EBS
+	// optimization](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ebs-optimized.html)
+	// +optional
+	EBSOptimized *bool `json:"ebsOptimized,omitempty"`
+
+	// Valid variants are `VolumeType` constants
+	// +optional
+	VolumeType *string `json:"volumeType,omitempty"`
+	// +optional
+	VolumeName *string `json:"volumeName,omitempty"`
+	// +optional
+	VolumeEncrypted *bool `json:"volumeEncrypted,omitempty"`
+	// +optional
+	VolumeKmsKeyID *string `json:"volumeKmsKeyID,omitempty"`
+	// +optional
+	VolumeIOPS *int `json:"volumeIOPS,omitempty"`
+
+	// PreBootstrapCommands are executed before bootstrapping instances to the
+	// cluster
+	// +optional
+	PreBootstrapCommands []string `json:"preBootstrapCommands,omitempty"`
+
+	// Override `eksctl`'s bootstrapping script
+	// +optional
+	OverrideBootstrapCommand *string `json:"overrideBootstrapCommand,omitempty"`
+
+	// DisableIMDSv1 requires requests to the metadata service to use IMDSv2 tokens
+	// Defaults to `false`
+	// +optional
+	DisableIMDSv1 *bool `json:"disableIMDSv1,omitempty"`
 }
 
-// ListOptions returns metav1.ListOptions with label selector for the managed nodegroup
-func (n *ManagedNodeGroup) ListOptions() metav1.ListOptions {
+// ListOptions returns metav1.ListOptions with label selector for the nodegroup
+func (n *NodeGroupBase) ListOptions() metav1.ListOptions {
 	return makeListOptions(n.Name)
 }
 
 // NameString returns the nodegroup name
-func (n *ManagedNodeGroup) NameString() string {
+func (n *NodeGroupBase) NameString() string {
 	return n.Name
 }
 
 // Size returns the minimum nodegroup size
-func (n *ManagedNodeGroup) Size() int {
+func (n *NodeGroupBase) Size() int {
 	if n.MinSize == nil {
 		return 0
 	}
@@ -859,8 +1084,34 @@ func (n *ManagedNodeGroup) Size() int {
 }
 
 // GetAMIFamily returns the AMI family
-func (n *ManagedNodeGroup) GetAMIFamily() string {
+func (n *NodeGroupBase) GetAMIFamily() string {
 	return n.AMIFamily
+}
+
+type LaunchTemplate struct {
+	// Launch template ID
+	// +required
+	ID string `json:"id,omitempty"`
+	// Launch template version
+	// Defaults to the default launch template version
+	// TODO support $Default, $Latest
+	Version *string `json:"version,omitempty"`
+	// TODO support Name?
+}
+
+// ManagedNodeGroup represents an EKS-managed nodegroup
+// TODO Validate for unmapped fields and throw an error
+type ManagedNodeGroup struct {
+	*NodeGroupBase
+
+	// LaunchTemplate specifies an existing launch template to use
+	// for the nodegroup
+	LaunchTemplate *LaunchTemplate `json:"launchTemplate,omitempty"`
+}
+
+// BaseNodeGroup implements NodePool
+func (m *ManagedNodeGroup) BaseNodeGroup() *NodeGroupBase {
+	return m.NodeGroupBase
 }
 
 func makeListOptions(nodeGroupName string) metav1.ListOptions {
@@ -894,31 +1145,53 @@ func IsAMI(amiFlag string) bool {
 
 // FargateProfile defines the settings used to schedule workload onto Fargate.
 type FargateProfile struct {
+
 	// Name of the Fargate profile.
+	// +required
 	Name string `json:"name"`
+
 	// PodExecutionRoleARN is the IAM role's ARN to use to run pods onto Fargate.
 	PodExecutionRoleARN string `json:"podExecutionRoleARN,omitempty"`
+
 	// Selectors define the rules to select workload to schedule onto Fargate.
 	Selectors []FargateProfileSelector `json:"selectors"`
-	// +optional
+
 	// Subnets which Fargate should use to do network placement of the selected workload.
 	// If none provided, all subnets for the cluster will be used.
+	// +optional
 	Subnets []string `json:"subnets,omitempty"`
 
+	// Used to tag the AWS resources
 	// +optional
 	Tags map[string]string `json:"tags,omitempty"`
 }
 
 // FargateProfileSelector defines rules to select workload to schedule onto Fargate.
 type FargateProfileSelector struct {
+
 	// Namespace is the Kubernetes namespace from which to select workload.
+	// +required
 	Namespace string `json:"namespace"`
-	// +optional
+
 	// Labels are the Kubernetes label selectors to use to select workload.
+	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // SecretsEncryption defines the configuration for KMS encryption provider
 type SecretsEncryption struct {
+	// +required
 	KeyARN *string `json:"keyARN,omitempty"`
+}
+
+// PrivateCluster defines the configuration for a fully-private cluster
+type PrivateCluster struct {
+
+	// Enabled enables creation of a fully-private cluster
+	Enabled bool `json:"enabled"`
+
+	// AdditionalEndpointServices specifies additional endpoint services that
+	// must be enabled for private access.
+	// Valid entries are `AdditionalEndpointServices` constants
+	AdditionalEndpointServices []string `json:"additionalEndpointServices,omitempty"`
 }

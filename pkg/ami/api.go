@@ -18,6 +18,7 @@ import (
 const (
 	ImageClassGeneral = iota
 	ImageClassGPU
+	ImageClassARM
 )
 
 // ImageClasses is a list of image class names
@@ -27,7 +28,7 @@ var ImageClasses = []string{
 }
 
 // Use checks if a given AMI ID is available in AWS EC2 as well as checking and populating RootDevice information
-func Use(ec2api ec2iface.EC2API, ng *api.NodeGroup) error {
+func Use(ec2api ec2iface.EC2API, ng *api.NodeGroupBase) error {
 	input := &ec2.DescribeImagesInput{
 		ImageIds: []*string{&ng.AMI},
 	}

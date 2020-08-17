@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/weaveworks/eksctl/pkg/eks"
 	"github.com/weaveworks/eksctl/pkg/fargate"
+	"github.com/weaveworks/eksctl/pkg/gitops"
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/cfn/manager"
@@ -37,7 +38,7 @@ func deleteClusterCmd(cmd *cmdutils.Cmd) {
 
 	cmd.FlagSetGroup.InFlagSet("General", func(fs *pflag.FlagSet) {
 		fs.StringVarP(&cfg.Metadata.Name, "name", "n", "", "EKS cluster name")
-		cmdutils.AddRegionFlag(fs, cmd.ProviderConfig)
+		cmdutils.AddRegionFlag(fs, &cmd.ProviderConfig)
 
 		cmd.Wait = false
 		cmdutils.AddWaitFlag(fs, &cmd.Wait, "deletion of all resources")
@@ -46,7 +47,7 @@ func deleteClusterCmd(cmd *cmdutils.Cmd) {
 		cmdutils.AddTimeoutFlag(fs, &cmd.ProviderConfig.WaitTimeout)
 	})
 
-	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, cmd.ProviderConfig, true)
+	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, &cmd.ProviderConfig, true)
 }
 
 func handleErrors(errs []error, subject string) error {
@@ -147,7 +148,7 @@ func doDeleteCluster(cmd *cmdutils.Cmd) error {
 			ctx, cleanup := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cleanup()
 
-			logger.Info("cleaning up LoadBalancer services")
+			logger.Info("cleaning up AWS load balancers created by Kubernetes objects of Kind Service or Ingress")
 			if err := elb.Cleanup(ctx, ctl.Provider.EC2(), ctl.Provider.ELB(), ctl.Provider.ELBV2(), clientSet, cfg); err != nil {
 				return err
 			}
@@ -182,6 +183,12 @@ func doDeleteCluster(cmd *cmdutils.Cmd) error {
 		}
 
 		logger.Success("all cluster resources were deleted")
+	}
+
+	{
+		if err := gitops.DeleteKey(cfg); err != nil {
+			return err
+		}
 	}
 
 	return nil

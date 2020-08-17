@@ -8,6 +8,11 @@ import (
 )
 
 var _ = Describe("ClusterConfig validation", func() {
+	newNodeGroup := func() *NodeGroup {
+		return &NodeGroup{
+			NodeGroupBase: &NodeGroupBase{},
+		}
+	}
 	Describe("nodeGroups[*].name", func() {
 		var (
 			cfg *ClusterConfig
@@ -352,6 +357,44 @@ var _ = Describe("ClusterConfig validation", func() {
 		})
 	})
 
+	Describe("cpuCredits", func() {
+		var ng *NodeGroup
+		BeforeEach(func() {
+			unlimited := "unlimited"
+			ng = &NodeGroup{
+				NodeGroupBase: &NodeGroupBase{},
+				InstancesDistribution: &NodeGroupInstancesDistribution{
+					InstanceTypes: []string{"t3.medium", "t3.large"},
+				},
+				CPUCredits: &unlimited,
+			}
+		})
+
+		It("works independent of instanceType", func() {
+			Context("unset", func() {
+				err := validateCPUCredits(ng)
+				Expect(err).ToNot(HaveOccurred())
+			})
+			Context("set", func() {
+				ng.InstanceType = "mixed"
+				err := validateCPUCredits(ng)
+				Expect(err).ToNot(HaveOccurred())
+			})
+		})
+
+		It("errors if no instance distribution", func() {
+			ng.InstancesDistribution = nil
+			err := validateCPUCredits(ng)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("errors if no t instance types", func() {
+			ng.InstancesDistribution.InstanceTypes = []string{}
+			err := validateCPUCredits(ng)
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
 	Describe("ssh flags", func() {
 		var (
 			testKeyPath = "some/path/to/file.pub"
@@ -394,6 +437,7 @@ var _ = Describe("ClusterConfig validation", func() {
 			var ng *NodeGroup
 			BeforeEach(func() {
 				ng = &NodeGroup{
+					NodeGroupBase: &NodeGroupBase{},
 					InstancesDistribution: &NodeGroupInstancesDistribution{
 						InstanceTypes: []string{"t3.medium", "t3.large"},
 					},
@@ -502,7 +546,7 @@ var _ = Describe("ClusterConfig validation", func() {
 
 			var ng *NodeGroup
 			BeforeEach(func() {
-				ng = &NodeGroup{}
+				ng = newNodeGroup()
 			})
 
 			It("Forbids overriding basic fields", func() {
@@ -552,7 +596,7 @@ var _ = Describe("ClusterConfig validation", func() {
 
 			var ng *NodeGroup
 			BeforeEach(func() {
-				ng = &NodeGroup{}
+				ng = newNodeGroup()
 			})
 
 			It("Forbids setting volumeKmsKeyID without volumeEncrypted", func() {
@@ -678,9 +722,15 @@ var _ = Describe("ClusterConfig validation", func() {
 			}
 
 			ngs := map[string]*NodeGroup{
-				"PreBootstrapCommands":     {PreBootstrapCommands: []string{"/usr/bin/env true"}},
-				"OverrideBootstrapCommand": {OverrideBootstrapCommand: &cmd},
-				"KubeletExtraConfig":       {KubeletExtraConfig: &doc},
+				"PreBootstrapCommands": {
+					NodeGroupBase: &NodeGroupBase{
+						PreBootstrapCommands: []string{"/usr/bin/env true"},
+					}},
+				"OverrideBootstrapCommand": {
+					NodeGroupBase: &NodeGroupBase{
+						OverrideBootstrapCommand: &cmd,
+					}},
+				"KubeletExtraConfig": {KubeletExtraConfig: &doc},
 				"overlapping Bottlerocket settings": {
 					Bottlerocket: &NodeGroupBottlerocket{
 						Settings: &InlineDocument{
@@ -695,6 +745,9 @@ var _ = Describe("ClusterConfig validation", func() {
 			}
 
 			for name, ng := range ngs {
+				if ng.NodeGroupBase == nil {
+					ng.NodeGroupBase = &NodeGroupBase{}
+				}
 				ng.AMIFamily = NodeImageFamilyBottlerocket
 				err := ValidateNodeGroup(0, ng)
 				Expect(err).To(HaveOccurred(), "Expected an error when provided %s", name)
@@ -704,9 +757,15 @@ var _ = Describe("ClusterConfig validation", func() {
 		It("has no error with supported fields", func() {
 			x := 32
 			ngs := []*NodeGroup{
-				{Labels: map[string]string{"label": "label-value"}},
-				{MaxPodsPerNode: x},
-				{MinSize: &x},
+				{NodeGroupBase: &NodeGroupBase{Labels: map[string]string{"label": "label-value"}}},
+				{NodeGroupBase: &NodeGroupBase{MaxPodsPerNode: x}},
+				{
+					NodeGroupBase: &NodeGroupBase{
+						ScalingConfig: &ScalingConfig{
+							MinSize: &x,
+						},
+					},
+				},
 			}
 
 			for i, ng := range ngs {
@@ -743,6 +802,66 @@ var _ = Describe("ClusterConfig validation", func() {
 			},
 			errSubstr: "secretsEncryption.keyARN is required",
 		}),
+	)
+
+	Describe("Windows node groups", func() {
+		It("returns an error with unsupported fields", func() {
+			cmd := "start /wait msiexec.exe"
+			doc := InlineDocument{
+				"cgroupDriver": "systemd",
+			}
+
+			ngs := map[string]*NodeGroup{
+				"OverrideBootstrapCommand": {NodeGroupBase: &NodeGroupBase{OverrideBootstrapCommand: &cmd}},
+				"KubeletExtraConfig":       {KubeletExtraConfig: &doc, NodeGroupBase: &NodeGroupBase{}},
+			}
+
+			for name, ng := range ngs {
+				ng.AMIFamily = NodeImageFamilyWindowsServer2019CoreContainer
+				err := ValidateNodeGroup(0, ng)
+				Expect(err).To(HaveOccurred(), "Expected an error when provided %s", name)
+			}
+		})
+
+		It("has no error with supported fields", func() {
+			x := 32
+			ngs := []*NodeGroup{
+				{NodeGroupBase: &NodeGroupBase{Labels: map[string]string{"label": "label-value"}}},
+				{NodeGroupBase: &NodeGroupBase{MaxPodsPerNode: x}},
+				{NodeGroupBase: &NodeGroupBase{ScalingConfig: &ScalingConfig{MinSize: &x}}},
+				{NodeGroupBase: &NodeGroupBase{PreBootstrapCommands: []string{"start /wait msiexec.exe"}}},
+			}
+
+			for i, ng := range ngs {
+				ng.AMIFamily = NodeImageFamilyWindowsServer2019CoreContainer
+				Expect(ValidateNodeGroup(i, ng)).To(Succeed())
+			}
+		})
+	})
+
+	DescribeTable("Nodegroup label validation", func(labels map[string]string, valid bool) {
+		err := ValidateNodeGroupLabels(labels)
+		if valid {
+			Expect(err).ToNot(HaveOccurred())
+		} else {
+			Expect(err).To(HaveOccurred())
+		}
+	},
+		Entry("Disallowed label", map[string]string{
+			"node-role.kubernetes.io/os": "linux",
+		}, false),
+
+		Entry("Disallowed label", map[string]string{
+			"alpha.service-controller.kubernetes.io/test": "value",
+		}, false),
+
+		Entry("No labels", map[string]string{}, true),
+
+		Entry("Allowed labels", map[string]string{
+			"kubernetes.io/hostname":           "supercomputer",
+			"beta.kubernetes.io/os":            "linux",
+			"kubelet.kubernetes.io/palindrome": "telebuk",
+		}, true),
 	)
 })
 

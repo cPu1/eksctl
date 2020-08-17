@@ -24,6 +24,7 @@ func MakeImageSearchPatterns(version string) map[string]map[int]string {
 		api.NodeImageFamilyAmazonLinux2: {
 			ImageClassGeneral: fmt.Sprintf("amazon-eks-node-%s-v*", version),
 			ImageClassGPU:     fmt.Sprintf("amazon-eks-gpu-node-%s-*", version),
+			ImageClassARM:     fmt.Sprintf("amazon-eks-arm64-node-%s-*", version),
 		},
 		api.NodeImageFamilyUbuntu1804: {
 			ImageClassGeneral: fmt.Sprintf("ubuntu-eks/k8s_%s/images/*", version),
@@ -34,6 +35,9 @@ func MakeImageSearchPatterns(version string) map[string]map[int]string {
 		api.NodeImageFamilyWindowsServer2019FullContainer: {
 			ImageClassGeneral: fmt.Sprintf("Windows_Server-2019-English-Full-EKS_Optimized-%v-*", version),
 		},
+		api.NodeImageFamilyWindowsServer1909CoreContainer: {
+			ImageClassGeneral: fmt.Sprintf("Windows_Server-1909-English-Core-EKS_Optimized-%v-*", version),
+		},
 	}
 }
 
@@ -42,11 +46,12 @@ func OwnerAccountID(imageFamily, region string) (string, error) {
 	switch imageFamily {
 	case api.NodeImageFamilyUbuntu1804:
 		return ownerIDUbuntu1804Family, nil
-	case api.NodeImageFamilyWindowsServer2019CoreContainer, api.NodeImageFamilyWindowsServer2019FullContainer:
-		return ownerIDWindowsFamily, nil
 	case api.NodeImageFamilyAmazonLinux2:
 		return api.EKSResourceAccountID(region), nil
 	default:
+		if api.IsWindowsImage(imageFamily) {
+			return ownerIDWindowsFamily, nil
+		}
 		return "", fmt.Errorf("unable to determine the account owner for image family %s", imageFamily)
 	}
 }
@@ -69,6 +74,15 @@ func (r *AutoResolver) Resolve(region, version, instanceType, imageFamily string
 		namePattern, ok = imageClasses[ImageClassGPU]
 		if !ok {
 			logger.Critical("image family %s doesn't support GPU image class", imageFamily)
+			return "", NewErrFailedResolution(region, version, instanceType, imageFamily)
+		}
+	}
+
+	if utils.IsARMInstanceType(instanceType) {
+		var ok bool
+		namePattern, ok = imageClasses[ImageClassARM]
+		if !ok {
+			logger.Critical("image family %s doesn't support ARM image class", imageFamily)
 			return "", NewErrFailedResolution(region, version, instanceType, imageFamily)
 		}
 	}

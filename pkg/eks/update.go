@@ -3,6 +3,7 @@ package eks
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
@@ -10,8 +11,11 @@ import (
 	"github.com/kris-nova/logger"
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
+	kubeclient "k8s.io/client-go/kubernetes"
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
+	"github.com/weaveworks/eksctl/pkg/utils/retry"
+	utilsstrings "github.com/weaveworks/eksctl/pkg/utils/strings"
 	"github.com/weaveworks/eksctl/pkg/utils/waiters"
 )
 
@@ -162,6 +166,30 @@ func (c *ClusterProvider) UpdateClusterVersion(cfg *api.ClusterConfig) (*awseks.
 	return output.Update, nil
 }
 
+// UpdateClusterTags calls eks.TagResource and tags the cluster
+func (c *ClusterProvider) UpdateClusterTags(cfg *api.ClusterConfig) error {
+	if len(cfg.Metadata.Tags) == 0 {
+		return nil
+	}
+	if err := c.RefreshClusterStatus(cfg); err != nil {
+		return err
+	}
+	input := &awseks.TagResourceInput{
+		ResourceArn: c.Status.clusterInfo.cluster.Arn,
+		Tags:        utilsstrings.ToPointersMap(cfg.Metadata.Tags),
+	}
+	_, err := c.Provider.EKS().TagResource(input)
+	if err != nil {
+		return err
+	}
+	var tagStrings []string
+	for k, v := range cfg.Metadata.Tags {
+		tagStrings = append(tagStrings, fmt.Sprintf("%s=%s", k, v))
+	}
+	logger.Success("tagged EKS cluster (%s)", strings.Join(tagStrings, ", "))
+	return nil
+}
+
 // UpdateClusterVersionBlocking calls UpdateClusterVersion and blocks until update
 // operation is successful
 func (c *ClusterProvider) UpdateClusterVersionBlocking(cfg *api.ClusterConfig) error {
@@ -170,7 +198,11 @@ func (c *ClusterProvider) UpdateClusterVersionBlocking(cfg *api.ClusterConfig) e
 		return err
 	}
 
-	return c.waitForUpdateToSucceed(cfg.Metadata.Name, id)
+	if err := c.waitForUpdateToSucceed(cfg.Metadata.Name, id); err != nil {
+		return err
+	}
+
+	return c.waitForControlPlaneVersion(cfg)
 }
 
 func (c *ClusterProvider) waitForUpdateToSucceed(clusterName string, update *awseks.Update) error {
@@ -195,4 +227,36 @@ func (c *ClusterProvider) waitForUpdateToSucceed(clusterName string, update *aws
 	msg := fmt.Sprintf("waiting for requested %q in cluster %q to succeed", *update.Type, clusterName)
 
 	return waiters.Wait(clusterName, msg, acceptors, newRequest, c.Provider.WaitTimeout(), nil)
+}
+
+func controlPlaneIsVersion(clientSet *kubeclient.Clientset, version string) (bool, error) {
+	serverVersion, err := clientSet.ServerVersion()
+	if err != nil {
+		return false, err
+	}
+	return fmt.Sprintf("%s.%s", serverVersion.Major, strings.TrimSuffix(serverVersion.Minor, "+")) == version, nil
+}
+
+func (c *ClusterProvider) waitForControlPlaneVersion(cfg *api.ClusterConfig) error {
+	retryPolicy := retry.TimingOutExponentialBackoff{
+		Timeout:  c.Provider.WaitTimeout(),
+		TimeUnit: time.Second,
+	}
+
+	clientSet, err := c.NewStdClientSet(cfg)
+	if err != nil {
+		return err
+	}
+
+	for !retryPolicy.Done() {
+		isUpdated, err := controlPlaneIsVersion(clientSet, cfg.Metadata.Version)
+		if err != nil {
+			return err
+		}
+		if isUpdated {
+			return nil
+		}
+		time.Sleep(retryPolicy.Duration())
+	}
+	return errors.New("timed out while waiting for control plane to report updated version")
 }

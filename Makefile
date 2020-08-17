@@ -1,35 +1,41 @@
 include Makefile.common
+include Makefile.docs
 
 version_pkg := github.com/weaveworks/eksctl/pkg/version
 
 gopath := $(shell go env GOPATH)
 gocache := $(shell go env GOCACHE)
 
+export PATH := ./build/scripts:$(PATH)
+
 GOBIN ?= $(gopath)/bin
 
+AWS_SDK_GO_DIR ?= $(gopath)/pkg/mod/$(shell grep 'aws-sdk-go' go.sum | awk '{print $$1 "@" $$2}' | grep -v 'go.mod' | sort | tail -1)
 
 generated_code_deep_copy_helper := pkg/apis/eksctl.io/v1alpha5/zz_generated.deepcopy.go
 
 generated_code_aws_sdk_mocks := $(wildcard pkg/eks/mocks/*API.go)
 
 conditionally_generated_files := \
-  userdocs/src/usage/schema.md \
+  userdocs/src/usage/schema.json \
   $(generated_code_deep_copy_helper) $(generated_code_aws_sdk_mocks)
 
 all_generated_files := \
   pkg/nodebootstrap/assets.go \
   pkg/addons/default/assets.go \
   pkg/addons/assets.go \
+  pkg/apis/eksctl.io/v1alpha5 \
   $(conditionally_generated_files)
 
 .DEFAULT_GOAL := help
 
 ##@ Dependencies
+.PHONY: install-all-deps
+install-all-deps: install-build-deps install-site-deps ## Install all dependencies for building both binary and user docs)
 
 .PHONY: install-build-deps
 install-build-deps: ## Install dependencies (packages and tools)
-	./install-build-deps.sh
-	pip3 install -r userdocs/requirements.txt
+	install-build-deps.sh
 
 ##@ Build
 
@@ -44,6 +50,9 @@ build: generate-always ## Build main binary
 .PHONY: build-all
 build-all: generate-always
 	goreleaser --config=.goreleaser-local.yaml --snapshot --skip-publish --rm-dist
+
+clean: ## Remove artefacts or generated files from previous build
+	rm -rf eksctl eksctl-integration-test
 
 ##@ Testing & CI
 
@@ -74,6 +83,7 @@ endif
 .PHONY: lint
 lint: ## Run linter over the codebase
 	time "$(GOBIN)/golangci-lint" run
+	@for config_file in $(shell ls .goreleaser*); do time "$(GOBIN)/goreleaser" check -f $${config_file}; done
 
 .PHONY: test
 test:
@@ -149,7 +159,8 @@ generate-always: pkg/addons/default/assets/aws-node.yaml ## Generate code (requi
 	@# - deleting an asset is breaks the dependencies
 	@# - different version of go-bindata generate different code
 	@$(GOBIN)/go-bindata -v
-	env GOBIN=$(GOBIN) time go generate ./pkg/nodebootstrap/assets.go
+	env GOBIN=$(GOBIN) time go generate ./pkg/apis/eksctl.io/v1alpha5/generate.go
+	env GOBIN=$(GOBIN) time go generate ./pkg/nodebootstrap
 	env GOBIN=$(GOBIN) time go generate ./pkg/addons/default/generate.go
 	env GOBIN=$(GOBIN) time go generate ./pkg/addons
 
@@ -159,10 +170,6 @@ generate-all: generate-always $(conditionally_generated_files) ## Re-generate al
 .PHONY: check-all-generated-files-up-to-date
 check-all-generated-files-up-to-date: generate-all
 	git diff --quiet -- $(all_generated_files) || (git --no-pager diff $(all_generated_files); echo "HINT: to fix this, run 'git commit $(all_generated_files) --message \"Update generated files\"'"; exit 1)
-
-.license-header: LICENSE
-	@# generate-groups.sh can't find the lincense header when using Go modules, so we provide one
-	printf "/*\n%s\n*/\n" "$$(cat LICENSE)" > $@
 
 ### Update AMIs in ami static resolver
 .PHONY: update-ami
@@ -182,18 +189,12 @@ pkg/addons/default/assets/aws-node.yaml:
 update-aws-node: ## Re-download the aws-node manifests from AWS
 	time go generate ./pkg/addons/default/aws_node_generate.go
 
-userdocs/src/usage/schema.md: $(call godeps,cmd/schema/generate.go)
-	time go run ./cmd/schema/generate.go $@
-
 deep_copy_helper_input = $(shell $(call godeps_cmd,./pkg/apis/...) | sed 's|$(generated_code_deep_copy_helper)||' )
-$(generated_code_deep_copy_helper): $(deep_copy_helper_input) .license-header ## Generate Kubernetes API helpers
-	./tools/update-codegen.sh
+$(generated_code_deep_copy_helper): $(deep_copy_helper_input) ## Generate Kubernetes API helpers
+	update-codegen.sh
 
 $(generated_code_aws_sdk_mocks): $(call godeps,pkg/eks/mocks/mocks.go)
-	mkdir -p vendor/github.com/aws/
-	@# Hack for Mockery to find the dependencies handled by `go mod`
-	ln -sfn "$(gopath)/pkg/mod/github.com/aws/aws-sdk-go@v1.30.11" vendor/github.com/aws/aws-sdk-go
-	time env GOBIN=$(GOBIN) go generate ./pkg/eks/mocks
+	time env GOBIN=$(GOBIN) AWS_SDK_GO_DIR=$(AWS_SDK_GO_DIR) go generate ./pkg/eks/mocks
 
 .PHONY: generate-kube-reserved
 generate-kube-reserved: ## Update instance list with respective specs
@@ -202,60 +203,21 @@ generate-kube-reserved: ## Update instance list with respective specs
 ##@ Release
 .PHONY: prepare-release
 prepare-release:
-	./tag-release.sh
+	tag-release.sh
 
 .PHONY: prepare-release-candidate
 prepare-release-candidate:
-	./tag-release-candidate.sh
+	tag-release-candidate.sh
 
 .PHONY: print-version
 print-version:
 	@go run pkg/version/generate/release_generate.go print-version
-
-.PHONY: upload-github
-upload-github:
-	@echo "Releasing version $(eksctl_version) in $(git_org)/$(git_repo)"
-	@echo "Check draft exists..." && github-release info --user $(git_org) --repo $(git_repo) --tag $(eksctl_version)
-	github-release upload --user $(git_org) --repo $(git_repo) --tag $(eksctl_version) --file dist/eksctl_Windows_amd64.zip --name eksctl_Windows_amd64.zip
-	github-release upload --user $(git_org) --repo $(git_repo) --tag $(eksctl_version) --file dist/eksctl_Darwin_amd64.tar.gz --name eksctl_Darwin_amd64.tar.gz
-	github-release upload --user $(git_org) --repo $(git_repo) --tag $(eksctl_version) --file dist/eksctl_Linux_amd64.tar.gz --name eksctl_Linux_amd64.tar.gz
-
-.PHONY: publish-github
-publish-github: upload-github
-	github-release publish --user $(git_org) --repo $(git_repo) --tag $(eksctl_version)
-
-.PHONY: publish-rc-github
-publish-rc-github: upload-github
-	github-release release --user $(git_org) --repo $(git_repo) --tag $(shell eksctl version) --pre-release
-
-.PHONY: publish-homebrew
-publish-homebrew:
-	@echo "Publishing to weaveworks/homebrew-tap"
-	git clone --depth 1 --branch master git@github.com:weaveworks/homebrew-tap.git
-	@go run tools/brew/update_formula.go \
-		-template tools/brew/formula.tmpl \
-		-outputPath homebrew-tap/Formula/$(git_repo).rb \
-		-version $(eksctl_version) \
-		-linux-url https://github.com/$(git_org)/$(git_repo)/releases/download/$(eksctl_version)/eksctl_Linux_amd64.tar.gz \
-		-mac-url https://github.com/$(git_org)/$(git_repo)/releases/download/$(eksctl_version)/eksctl_Darwin_amd64.tar.gz
-	cd homebrew-tap; git commit --message "Brew formula update for $(git_repo) version $(eksctl_version)" -- Formula/$(git_repo).rb
-	cd homebrew-tap; git push origin master
 
 ##@ Docker
 
 .PHONY: eksctl-image
 eksctl-image: ## Build the eksctl image that has release artefacts and no build dependencies
 	$(MAKE) -f Makefile.docker $@
-
-##@ Site
-
-.PHONY: serve-pages
-serve-pages: ## Serve the site locally
-	cd userdocs/ ; mkdocs serve
-
-.PHONY: build-pages
-build-pages: ## Generate the site
-	cd userdocs/ ; mkdocs build
 
 ##@ Utility
 

@@ -6,11 +6,11 @@ import (
 
 	"github.com/kris-nova/logger"
 	"github.com/pkg/errors"
-	"github.com/weaveworks/eksctl/pkg/addons"
 	appsv1 "k8s.io/api/apps/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/weaveworks/eksctl/pkg/addons"
 	"github.com/weaveworks/eksctl/pkg/kubernetes"
 )
 
@@ -20,6 +20,63 @@ const (
 
 	awsNodeImageFormatPrefix = "%s.dkr.ecr.%s.%s/amazon-k8s-cni"
 )
+
+// IsAWSNodeUpToDate will update the `aws-node` add-on and returns true
+// if an update is available.
+func IsAWSNodeUpToDate(rawClient kubernetes.RawClientInterface, region string) (bool, error) {
+	clusterDaemonSet, err := rawClient.ClientSet().AppsV1().DaemonSets(metav1.NamespaceSystem).Get(AWSNode, metav1.GetOptions{})
+	if err != nil {
+		if apierrs.IsNotFound(err) {
+			logger.Warning("%q was not found", AWSNode)
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "getting %q", AWSNode)
+	}
+
+	// if DaemonSets is present, go through our list of assets
+	list, err := LoadAsset(AWSNode, "yaml")
+	if err != nil {
+		return false, err
+	}
+
+	for _, rawObj := range list.Items {
+		resource, err := rawClient.NewRawResource(rawObj.Object)
+		if err != nil {
+			return false, err
+		}
+		if resource.GVK.Kind != "DaemonSet" {
+			continue
+		}
+
+		daemonSet, ok := resource.Info.Object.(*appsv1.DaemonSet)
+		if !ok {
+			return false, fmt.Errorf("expected type %T; got %T", &appsv1.Deployment{}, resource.Info.Object)
+		}
+		container := &daemonSet.Spec.Template.Spec.Containers[0]
+		imageParts := strings.Split(container.Image, ":")
+		if len(imageParts) != 2 {
+			return false, fmt.Errorf("invalid container image: %s", container.Image)
+		}
+
+		if !strings.HasSuffix(imageParts[1], "-eksbuild.1") {
+			imageParts[1] = imageParts[1] + "-eksbuild.1"
+		}
+
+		container.Image = awsNodeImageFormatPrefix + ":" + imageParts[1]
+		if err := addons.UseRegionalImage(&daemonSet.Spec.Template, region); err != nil {
+			return false, err
+		}
+		tagMismatch, err := addons.ImageTagsDiffer(
+			container.Image,
+			clusterDaemonSet.Spec.Template.Spec.Containers[0].Image,
+		)
+		if err != nil {
+			return false, err
+		}
+		return !tagMismatch, nil
+	}
+	return true, nil
+}
 
 // UpdateAWSNode will update the `aws-node` add-on and returns true
 // if an update is available.
@@ -45,7 +102,8 @@ func UpdateAWSNode(rawClient kubernetes.RawClientInterface, region string, plan 
 		if err != nil {
 			return false, err
 		}
-		if resource.GVK.Kind == "DaemonSet" {
+		switch resource.GVK.Kind {
+		case "DaemonSet":
 			daemonSet, ok := resource.Info.Object.(*appsv1.DaemonSet)
 			if !ok {
 				return false, fmt.Errorf("expected type %T; got %T", &appsv1.Deployment{}, resource.Info.Object)
@@ -54,6 +112,10 @@ func UpdateAWSNode(rawClient kubernetes.RawClientInterface, region string, plan 
 			imageParts := strings.Split(container.Image, ":")
 			if len(imageParts) != 2 {
 				return false, fmt.Errorf("invalid container image: %s", container.Image)
+			}
+
+			if !strings.HasSuffix(imageParts[1], "-eksbuild.1") {
+				imageParts[1] = imageParts[1] + "-eksbuild.1"
 			}
 
 			container.Image = awsNodeImageFormatPrefix + ":" + imageParts[1]
@@ -67,13 +129,24 @@ func UpdateAWSNode(rawClient kubernetes.RawClientInterface, region string, plan 
 			if err != nil {
 				return false, err
 			}
-		}
-
-		if resource.GVK.Kind == "CustomResourceDefinition" && plan {
-			// eniconfigs.crd.k8s.amazonaws.com CRD is only partially defined in the
-			// manifest, and causes a range of issue in plan mode, we can skip it
-			logger.Info(resource.LogAction(plan, "replaced"))
-			continue
+		case "CustomResourceDefinition":
+			if plan {
+				// eniconfigs.crd.k8s.amazonaws.com CRD is only partially defined in the
+				// manifest, and causes a range of issue in plan mode, we can skip it
+				logger.Info(resource.LogAction(plan, "replaced"))
+				continue
+			}
+		case "ServiceAccount":
+			// Leave service account if it exists
+			// to avoid overwriting annotations
+			_, exists, err := resource.Get()
+			if err != nil {
+				return false, err
+			}
+			if exists {
+				logger.Info(resource.LogAction(plan, "skipped existing"))
+				continue
+			}
 		}
 
 		status, err := resource.CreateOrReplace(plan)

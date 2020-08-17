@@ -18,7 +18,7 @@ contribution. No action from you is required, but it's a good idea to see the
 ## Communication
 
 The project uses Slack. If you get stuck or just have a question then you are encouraged to join the
-[Weave Community](https://weaveworks.github.io/community-slack/) Slack workspace and use the
+[Weave Community](https://slack.weave.works/) Slack workspace and use the
 [#eksctl](https://weave-community.slack.com/messages/eksctl/) channel and/or the [mailing
 list][maillist].
 
@@ -73,6 +73,9 @@ This project is written in Go. To be able to contribute you will need:
 2. Make sure that `$(go env GOPATH)/bin` is in your shell's `PATH`. You can do so by
    running `export PATH="$(go env GOPATH)/bin:$PATH"`
 
+3. (Optional) [User documentation](https://eksctl.io) is built and generated with [mkdocs](https://www.mkdocs.org/).
+   Please make sure you have python3 and pip installed on your local system.
+
 #### 2. Fork and clone the repo
 
 Make a fork of this repository and clone it by running:
@@ -94,6 +97,15 @@ make test
 make build
 ```
 
+To build the user docs locally, please refer to the below steps:
+
+```bash
+# Requires python3 and pip3 installed in your local system
+make install-site-deps
+make build-pages
+make serve-pages
+```
+
 To run integration test you will need an AWS account.
 ```bash
 make integration-test-container TEST_V=1
@@ -109,7 +121,7 @@ make integration-test-container TEST_V=1
 > ```
 
 If you prefer to use Docker, the same way it is used in CI, you can use the
-following comands:
+following commands:
 
 ```
 make -f Makefile.docker test
@@ -306,7 +318,7 @@ TODO: Further automate these steps in CircleCI, etc.
 
 ### Notes on Automation
 
-When you run `make prepare-release` it will push a commit to master and a tag, which will trigger [release workflow](https://github.com/weaveworks/eksctl/blob/38364943776230bcc9ad57a9f8a423c7ec3fb7fe/.circleci/config.yml#L28-L42) in Circle CI. This runs `make eksctl-image` followed by `make release`. Most of the logic is defined in [`do-release.sh`](https://github.com/weaveworks/eksctl/blob/master/do-release.sh).
+When you run `make prepare-release` it will push a commit to master and a tag, which will trigger [release workflow](https://github.com/weaveworks/eksctl/blob/38364943776230bcc9ad57a9f8a423c7ec3fb7fe/.circleci/config.yml#L28-L42) in Circle CI. This runs `make eksctl-image` followed by `make release`. Most of the logic is defined in [`do-release.sh`](https://github.com/weaveworks/eksctl/blob/master/build/scripts/do-release.sh).
 
 You want to keep an eye on Circle CI for the progress of the release ([0.3.1 example logs](https://circleci.com/workflow-run/02d8b5fb-bc7f-404c-9051-68307c124649)). It normally takes around 30 minutes.
 

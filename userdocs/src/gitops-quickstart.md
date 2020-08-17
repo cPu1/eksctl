@@ -100,21 +100,15 @@ or use the one you intend to deploy to the cluster.
 ![Install Flux](img/gitops-diagram1.svg#content)
 ![Deploying with gitops](img/gitops-diagram2.svg#content)
 
-!!!warning
-        This is an experimental feature. To enable it, set the environment variable `EKSCTL_EXPERIMENTAL=true`.
-
-        Experimental features are not stable and their command name and flags may change.
-
 Run this command from any directory in your file system. `eksctl` will clone
 your repository in a temporary directory that will be removed later.
 
 ```console
-EKSCTL_EXPERIMENTAL=true \
-    eksctl enable repo \
-        --git-url git@github.com:example/my-eks-config \
-        --git-email your@email.com \
-        --cluster your-cluster-name \
-        --region your-cluster-region
+eksctl enable repo \
+    --git-url git@github.com:example/my-eks-config \
+    --git-email <username>@users.noreply.github.com \
+    --cluster your-cluster-name \
+    --region your-cluster-region
 ```
 
 Let us go through the specified arguments one by one:
@@ -129,7 +123,7 @@ Let us go through the specified arguments one by one:
 - `--region`: the region of your cluster.
 
 There are more arguments and options, please refer to the
-[gitops reference of eksctl](/usage/experimental/gitops/)
+[gitops reference of eksctl](/usage/gitops/)
 which details all the flags and resulting directory structure.
 
 The command will take a while to run and it's a good idea to scan
@@ -147,6 +141,13 @@ Copy the lines starting with `ssh-rsa` and give it read/write access to your
 repository. For example, in GitHub, by adding it as a deploy key. There you
 can easily do this in the `Settings > Deploy keys > Add deploy key`. Just
 make sure you check `Allow write access` as well.
+
+Flux polls git at a set interval but you can tell Flux to sync the changes
+immediately with:
+
+```console
+fluxctl sync --k8s-fwd-ns flux
+```
 
 The next time Flux syncs from Git, it will start updating the cluster
 and actively deploying.
@@ -173,7 +174,8 @@ Welcome to a fully gitopsed world!
 
 ## Enabling a Quick Start profile
 
-The following command will set up your cluster with the `app-dev` profile,
+The following command will set up your cluster with the
+[app-dev](https://github.com/weaveworks/eks-quickstart-app-dev) profile,
 the first gitops Quick Start. All of the config files you need for a
 production-ready cluster will be in the git repo you have provided and
 those components will be deployed to your cluster. When you make changes
@@ -181,22 +183,15 @@ in the configuration they will be reflected on your cluster.
 
 ![Enabling a profile](img/gitops-diagram3.svg#content)
 
-> This is an experimental feature. To enable it, set the environment
-> variable `EKSCTL_EXPERIMENTAL=true`.
->
-> Experimental features are not stable and their command name and flags
-> may change.
-
 Run this command from any directory in your file system. `eksctl` will clone
 your repository in a temporary directory that will be removed later.
 
 ```console
-EKSCTL_EXPERIMENTAL=true eksctl \
-        enable profile app-dev \
-        --git-url git@github.com:example/my-eks-config \
-        --git-email your@email.com \
-        --cluster your-cluster-name \
-        --region your-cluster-region
+eksctl enable profile app-dev \
+    --git-url git@github.com:example/my-eks-config \
+    --git-email <username>@users.noreply.github.com \
+    --cluster your-cluster-name \
+    --region your-cluster-region
 ```
 
 Let us go through the specified arguments one by one:
@@ -214,12 +209,17 @@ Let us go through the specified arguments one by one:
   to start from scratch every time. We use `app-dev` here.
 
 There are more arguments and options, please refer to the
-[gitops reference of eksctl](/usage/experimental/gitops/)
+[gitops reference of eksctl](/usage/gitops/)
 which details all the flags and resulting directory structure.
 
 This will load gitops Quick Start manifests into your repo. It will use
 templating to add your cluster name and region to the configuration so that
 cluster components that need those values can work (e.g. `alb-ingress`).
+
+If you fetch the latest changes to your configuration repository,
+you will see that eksctl has updated it with the templated files from the
+Quick Start. The next time Flux syncs from this repo, it will start updating
+the cluster with the current configuration.
 
 In our case we are going to see these new arrivals in the cluster:
 
@@ -289,6 +289,43 @@ Congratulations to your gitopsed cluster on EKS!
 
 ## Advanced setups
 
+### Creating a cluster with Gitops in one command
+
+If you already have experience with Gitops in eksctl you might want to create a cluster with a Gitops setup at once. To
+do that, simply add the Gitops configuration to the cluster's config file like in the example below:
+
+```YAML
+---
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: cluster-21
+  region: eu-north-1
+
+# other cluster config ...
+
+git:
+  repo:
+    url: "git@github.com:myorg/cluster-21.git"
+    branch: master
+    fluxPath: "flux/"
+    user: "gitops"
+    email: "<username>@users.noreply.github.com"
+  operator:
+    namespace: "flux"
+    withHelm: true
+  bootstrapProfile:
+    source: app-dev
+    revision: master
+```
+
+This configuration will install Flux and Helm, and set up the repo `git@github.com:myorg/cluster-21.git` so that any
+Kubernetes manifest added there will automatically be picked up and applied to your cluster by Flux. Once the cluster is
+created, the repo will also contain the manifests used to install Flux and Helm, so any further configuration can be
+done directly in a Gitops way! Just modify the manifests, commit the changes and push them to the repo.
+
+
 ### Handcrafting your configuration
 
 `eksctl enable profile` can largely be decomposed into
@@ -313,15 +350,15 @@ same defaults, it makes sense to use those as a profile. You could
 be entirely starting from scratch here too. What we will do in this part
 of the tutorial is using `weaveworks/eks-quickstart-app-dev`, which is
 the `app-dev` gitops Quick Start profile. To create your own profile
-check out [the documentation](/usage/experimental/gitops/#creating-your-own-quick-start-profile).
+check out [the documentation](/usage/gitops/#creating-your-own-quick-start-profile).
 
 Now please run:
 
 ```console
-EKSCTL_EXPERIMENTAL=true eksctl generate profile \
-        --cluster wonderful-wardrobe-1565767990 \
-        --git-url https://github.com/weaveworks/eks-quickstart-app-dev.git \
-        --profile-path ~/dev/flux-get-started/cluster-config
+eksctl generate profile \
+    --cluster wonderful-wardrobe-1565767990 \
+    --profile-source https://github.com/weaveworks/eks-quickstart-app-dev.git \
+    --profile-path ~/dev/flux-get-started/cluster-config
 ```
 
 Let's break this down here. `eksctl generate profile` at the very
@@ -329,7 +366,7 @@ least wants:
 
 - `--cluster`: the name of the cluster - check `eksctl get cluster`
   to see what the name of yours is
-- `--git-url`: the Git URL of the Quick Start profile to deploy to the cluster
+- `--profile-source`: the Git URL of the Quick Start profile to deploy to the cluster
 - `--profile-path`: a local path: this is an empty new directory
   (here `cluster-config`) you create in your local checkout of
   the config repository, which we used in the previous command

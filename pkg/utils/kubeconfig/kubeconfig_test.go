@@ -3,6 +3,8 @@ package kubeconfig_test
 import (
 	"io/ioutil"
 	"os"
+	"path"
+	"sync"
 
 	eksctlapi "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/utils/kubeconfig"
@@ -67,6 +69,13 @@ var _ = Describe("Kubeconfig", func() {
 		filename, err := kubeconfig.Write("/", testConfig, false)
 		Expect(err).NotTo(BeNil())
 		Expect(filename).To(BeEmpty())
+	})
+
+	It("creating new Kubeconfig in non-existent directory", func() {
+		tempDir, _ := ioutil.TempDir("", "")
+		filename, err := kubeconfig.Write(path.Join(tempDir, "nonexistentdir", "kubeconfig"), testConfig, false)
+		Expect(err).To(BeNil())
+		Expect(filename).ToNot(BeEmpty())
 	})
 
 	It("sets new Kubeconfig context", func() {
@@ -137,6 +146,20 @@ var _ = Describe("Kubeconfig", func() {
 		Expect(readConfig.CurrentContext).To(Equal("minikube"))
 	})
 
+	var (
+		kubeconfigPathToRestore string
+		hasKubeconfigPath       bool
+	)
+
+	ChangeKubeconfig := func() {
+		if _, err := os.Stat(configFile.Name()); os.IsNotExist(err) {
+			GinkgoT().Fatal(err)
+		}
+
+		kubeconfigPathToRestore, hasKubeconfigPath = os.LookupEnv("KUBECONFIG")
+		os.Setenv("KUBECONFIG", configFile.Name())
+	}
+
 	Context("delete config", func() {
 		// Default cluster name is 'foo' and region is 'us-west-2'
 		var apiClusterConfigSample = eksctlapi.ClusterConfig{
@@ -147,24 +170,24 @@ var _ = Describe("Kubeconfig", func() {
 			},
 			NodeGroups: []*eksctlapi.NodeGroup{
 				{
-					AMI:               "",
-					InstanceType:      "m5.large",
-					AvailabilityZones: []string{"us-west-2b", "us-west-2a", "us-west-2c"},
-					PrivateNetworking: false,
-					SSH: &eksctlapi.NodeGroupSSH{
-						Allow:         eksctlapi.Disabled(),
-						PublicKeyPath: &exampleSSHKeyPath,
-						PublicKey:     nil,
-						PublicKeyName: nil,
-					},
-					DesiredCapacity: nil,
-					MinSize:         nil,
-					MaxSize:         nil,
-					MaxPodsPerNode:  0,
-					IAM: &eksctlapi.NodeGroupIAM{
-						AttachPolicyARNs: []string(nil),
-						InstanceRoleARN:  "",
-						InstanceRoleName: "",
+					NodeGroupBase: &eksctlapi.NodeGroupBase{
+						InstanceType:      "m5.large",
+						AvailabilityZones: []string{"us-west-2b", "us-west-2a", "us-west-2c"},
+						PrivateNetworking: false,
+						SSH: &eksctlapi.NodeGroupSSH{
+							Allow:         eksctlapi.Disabled(),
+							PublicKeyPath: &exampleSSHKeyPath,
+							PublicKey:     nil,
+							PublicKeyName: nil,
+						},
+						ScalingConfig: &eksctlapi.ScalingConfig{},
+						IAM: &eksctlapi.NodeGroupIAM{
+							AttachPolicyARNs: []string(nil),
+							InstanceRoleARN:  "",
+							InstanceRoleName: "",
+						},
+						AMI:            "",
+						MaxPodsPerNode: 0,
 					},
 				},
 			},
@@ -184,8 +207,6 @@ var _ = Describe("Kubeconfig", func() {
 			twoClustersAsBytes                []byte
 			oneClusterWithoutContextAsBytes   []byte
 			oneClusterWithStaleContextAsBytes []byte
-			kubeconfigPathToRestore           string
-			hasKubeconfigPath                 bool
 		)
 
 		// Returns an ClusterConfig with a cluster name equal to the provided clusterName.
@@ -193,15 +214,6 @@ var _ = Describe("Kubeconfig", func() {
 			apiClusterConfig := apiClusterConfigSample
 			apiClusterConfig.Metadata.Name = clusterName
 			return &apiClusterConfig
-		}
-
-		ChangeKubeconfig := func() {
-			if _, err := os.Stat(configFile.Name()); os.IsNotExist(err) {
-				GinkgoT().Fatal(err)
-			}
-
-			kubeconfigPathToRestore, hasKubeconfigPath = os.LookupEnv("KUBECONFIG")
-			os.Setenv("KUBECONFIG", configFile.Name())
 		}
 
 		RestoreKubeconfig := func() {
@@ -296,5 +308,50 @@ var _ = Describe("Kubeconfig", func() {
 			Expect(err).To(BeNil())
 			Expect(configFileAsBytes).To(MatchYAML(twoClustersAsBytes), "Should not change")
 		})
+	})
+
+	It("safely handles concurrent read-modify-write operations", func() {
+		var (
+			oneCluster  *api.Config
+			twoClusters *api.Config
+		)
+		ChangeKubeconfig()
+
+		var err error
+		tmp, err := ioutil.TempFile("", "")
+		Expect(err).To(BeNil())
+
+		{
+			if oneCluster, err = clientcmd.LoadFromFile("testdata/one_cluster.golden"); err != nil {
+				GinkgoT().Fatalf("failed reading .golden: %v", err)
+			}
+
+			if twoClusters, err = clientcmd.LoadFromFile("testdata/two_clusters.golden"); err != nil {
+				GinkgoT().Fatalf("failed reading .golden: %v", err)
+			}
+		}
+
+		var wg sync.WaitGroup
+		multiplier := 3
+		iters := 10
+		for i := 0; i < multiplier; i++ {
+			for k := 0; k < iters; k++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					_, err := kubeconfig.Write(tmp.Name(), *oneCluster, false)
+					Expect(err).To(BeNil())
+				}()
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					_, err := kubeconfig.Write(tmp.Name(), *twoClusters, false)
+					Expect(err).To(BeNil())
+				}()
+			}
+		}
+
+		wg.Wait()
+
 	})
 })

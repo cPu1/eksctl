@@ -1,74 +1,40 @@
 package builder
 
 import (
-	"encoding/json"
 	"fmt"
 
-	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/eks"
-	gfn "github.com/awslabs/goformation/cloudformation"
+	"github.com/pkg/errors"
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/utils"
+	gfnec2 "github.com/weaveworks/goformation/v4/cloudformation/ec2"
+	gfneks "github.com/weaveworks/goformation/v4/cloudformation/eks"
+	gfnt "github.com/weaveworks/goformation/v4/cloudformation/types"
 )
 
 // ManagedNodeGroupResourceSet defines the CloudFormation resources required for a managed nodegroup
 type ManagedNodeGroupResourceSet struct {
-	clusterConfig    *api.ClusterConfig
-	clusterStackName string
-	nodeGroup        *api.ManagedNodeGroup
+	clusterConfig         *api.ClusterConfig
+	clusterStackName      string
+	nodeGroup             *api.ManagedNodeGroup
+	launchTemplateFetcher *LaunchTemplateFetcher
 	*resourceSet
+
+	// UserDataMimeBoundary sets the MIME boundary for user data
+	UserDataMimeBoundary string
 }
 
-// This type exists because goformation does not support Managed Nodes (yet)
-// Rather than setting all field types to *gfn.Value, the types are conveniently chosen
-// to allow using values without requiring any conversion
-type managedNodeGroup struct {
-	ClusterName   string              `json:"ClusterName"`
-	NodegroupName string              `json:"NodegroupName"`
-	ScalingConfig *scalingConfig      `json:"ScalingConfig,omitempty"`
-	DiskSize      int                 `json:"DiskSize,omitempty"` // 0 is not a valid value
-	Subnets       interface{}         `json:"Subnets"`
-	InstanceTypes []string            `json:"InstanceTypes"`
-	AmiType       string              `json:"AmiType,omitempty"`
-	RemoteAccess  *remoteAccessConfig `json:"RemoteAccess,omitempty"`
-	NodeRole      *gfn.Value          `json:"NodeRole"`
-	Labels        map[string]string   `json:"Labels,omitempty"`
-	Tags          map[string]string   `json:"Tags,omitempty"`
-}
-
-type scalingConfig struct {
-	MinSize     *int `json:"MinSize,omitempty"`
-	MaxSize     *int `json:"MaxSize,omitempty"`
-	DesiredSize *int `json:"DesiredSize,omitempty"`
-}
-
-type remoteAccessConfig struct {
-	Ec2SshKey            *string   `json:"Ec2SshKey,omitempty"`
-	SourceSecurityGroups []*string `json:"SourceSecurityGroups,omitempty"`
-}
-
-// TODO consider using the Template.Resource interface
-
-// MarshalJSON returns the JSON encoding for this CloudFormation resource
-func (e *managedNodeGroup) MarshalJSON() ([]byte, error) {
-	type Properties managedNodeGroup
-	return json.Marshal(&struct {
-		Type       string
-		Properties Properties
-	}{
-		Type:       "AWS::EKS::Nodegroup",
-		Properties: Properties(*e),
-	})
-
-}
+const ManagedNodeGroupResourceName = "ManagedNodeGroup"
 
 // NewManagedNodeGroup creates a new ManagedNodeGroupResourceSet
-func NewManagedNodeGroup(cluster *api.ClusterConfig, nodeGroup *api.ManagedNodeGroup, clusterStackName string) *ManagedNodeGroupResourceSet {
+func NewManagedNodeGroup(cluster *api.ClusterConfig, nodeGroup *api.ManagedNodeGroup, launchTemplateFetcher *LaunchTemplateFetcher, clusterStackName string) *ManagedNodeGroupResourceSet {
 	return &ManagedNodeGroupResourceSet{
-		clusterConfig:    cluster,
-		clusterStackName: clusterStackName,
-		nodeGroup:        nodeGroup,
-		resourceSet:      newResourceSet(),
+		clusterConfig:         cluster,
+		clusterStackName:      clusterStackName,
+		nodeGroup:             nodeGroup,
+		launchTemplateFetcher: launchTemplateFetcher,
+		resourceSet:           newResourceSet(),
 	}
 }
 
@@ -82,14 +48,14 @@ func (m *ManagedNodeGroupResourceSet) AddAllResources() error {
 
 	m.template.Mappings[servicePrincipalPartitionMapName] = servicePrincipalPartitionMappings
 
-	var nodeRole *gfn.Value
+	var nodeRole *gfnt.Value
 	if m.nodeGroup.IAM.InstanceRoleARN == "" {
 		if err := createRole(m.resourceSet, m.nodeGroup.IAM, true); err != nil {
 			return err
 		}
-		nodeRole = gfn.MakeFnGetAttString(fmt.Sprintf("%s.%s", cfnIAMInstanceRoleName, "Arn"))
+		nodeRole = gfnt.MakeFnGetAttString(cfnIAMInstanceRoleName, "Arn")
 	} else {
-		nodeRole = gfn.NewString(m.nodeGroup.IAM.InstanceRoleARN)
+		nodeRole = gfnt.NewString(m.nodeGroup.IAM.InstanceRoleARN)
 	}
 
 	subnets, err := AssignSubnets(m.nodeGroup.AvailabilityZones, m.clusterStackName, m.clusterConfig, m.nodeGroup.PrivateNetworking)
@@ -97,34 +63,88 @@ func (m *ManagedNodeGroupResourceSet) AddAllResources() error {
 		return err
 	}
 
-	managedResource := &managedNodeGroup{
-		ClusterName:   m.clusterConfig.Metadata.Name,
-		NodegroupName: m.nodeGroup.Name,
-		ScalingConfig: &scalingConfig{
-			MinSize:     m.nodeGroup.MinSize,
-			MaxSize:     m.nodeGroup.MaxSize,
-			DesiredSize: m.nodeGroup.DesiredCapacity,
-		},
-		Subnets: subnets,
-		// Currently the API supports specifying only one instance type
-		InstanceTypes: []string{m.nodeGroup.InstanceType},
-		AmiType:       getAMIType(m.nodeGroup.InstanceType),
+	scalingConfig := gfneks.Nodegroup_ScalingConfig{}
+	if m.nodeGroup.MinSize != nil {
+		scalingConfig.MinSize = gfnt.NewInteger(*m.nodeGroup.MinSize)
+	}
+	if m.nodeGroup.MaxSize != nil {
+		scalingConfig.MaxSize = gfnt.NewInteger(*m.nodeGroup.MaxSize)
+	}
+	if m.nodeGroup.DesiredCapacity != nil {
+		scalingConfig.DesiredSize = gfnt.NewInteger(*m.nodeGroup.DesiredCapacity)
+	}
+	managedResource := &gfneks.Nodegroup{
+		ClusterName:   gfnt.NewString(m.clusterConfig.Metadata.Name),
+		NodegroupName: gfnt.NewString(m.nodeGroup.Name),
+		ScalingConfig: &scalingConfig,
+		Subnets:       subnets,
 		NodeRole:      nodeRole,
 		Labels:        m.nodeGroup.Labels,
 		Tags:          m.nodeGroup.Tags,
 	}
 
-	if api.IsEnabled(m.nodeGroup.SSH.Allow) {
-		managedResource.RemoteAccess = &remoteAccessConfig{
-			Ec2SshKey:            m.nodeGroup.SSH.PublicKeyName,
-			SourceSecurityGroups: aws.StringSlice(m.nodeGroup.SSH.SourceSecurityGroupIDs),
+	var launchTemplate *gfneks.Nodegroup_LaunchTemplate
+
+	if m.nodeGroup.LaunchTemplate != nil {
+		launchTemplateData, err := m.launchTemplateFetcher.Fetch(m.nodeGroup.LaunchTemplate)
+		if err != nil {
+			return err
+		}
+		if err := validateLaunchTemplate(launchTemplateData, m.nodeGroup); err != nil {
+			return err
+		}
+
+		launchTemplate = &gfneks.Nodegroup_LaunchTemplate{
+			ID: gfnt.NewString(m.nodeGroup.LaunchTemplate.ID),
+		}
+		if version := m.nodeGroup.LaunchTemplate.Version; version != nil {
+			launchTemplate.Version = gfnt.NewString(*version)
+		}
+
+		if launchTemplateData.ImageId == nil {
+			managedResource.AmiType = gfnt.NewString(getAMIType(*launchTemplateData.InstanceType))
+		}
+	} else {
+		launchTemplateData, err := m.makeLaunchTemplateData()
+		if err != nil {
+			return err
+		}
+		if launchTemplateData.ImageId == nil {
+			managedResource.AmiType = gfnt.NewString(getAMIType(m.nodeGroup.InstanceType))
+		}
+
+		ltRef := m.newResource("LaunchTemplate", &gfnec2.LaunchTemplate{
+			LaunchTemplateName: gfnt.MakeFnSubString(fmt.Sprintf("${%s}", gfnt.StackName)),
+			LaunchTemplateData: launchTemplateData,
+		})
+		launchTemplate = &gfneks.Nodegroup_LaunchTemplate{
+			ID: ltRef,
 		}
 	}
-	if m.nodeGroup.VolumeSize != nil {
-		managedResource.DiskSize = *m.nodeGroup.VolumeSize
+
+	managedResource.LaunchTemplate = launchTemplate
+	m.newResource(ManagedNodeGroupResourceName, managedResource)
+	return nil
+}
+
+func validateLaunchTemplate(launchTemplateData *ec2.ResponseLaunchTemplateData, ng *api.ManagedNodeGroup) error {
+	if launchTemplateData.InstanceType == nil {
+		return errors.New("instance type must be set in the launch template")
 	}
 
-	m.newResource("ManagedNodeGroup", managedResource)
+	// Custom AMI
+	if launchTemplateData.ImageId != nil {
+		if launchTemplateData.UserData == nil {
+			return errors.New("node bootstrapping script (UserData) must be set when using a custom AMI")
+		}
+		if ng.AMI != "" {
+			return errors.New("cannot set managedNodegroup.AMI when launchTemplate.ImageId is set")
+		}
+	}
+
+	if launchTemplateData.IamInstanceProfile != nil && launchTemplateData.IamInstanceProfile.Arn != nil {
+		return errors.New("IAM instance profile must not be set in the launch template")
+	}
 
 	return nil
 }
@@ -132,6 +152,10 @@ func (m *ManagedNodeGroupResourceSet) AddAllResources() error {
 func getAMIType(instanceType string) string {
 	if utils.IsGPUInstanceType(instanceType) {
 		return eks.AMITypesAl2X8664Gpu
+	}
+	if utils.IsARMInstanceType(instanceType) {
+		// TODO Upgrade SDK and use constant from the eks library
+		return "AL2_ARM_64"
 	}
 	return eks.AMITypesAl2X8664
 }

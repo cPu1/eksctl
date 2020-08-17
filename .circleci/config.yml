@@ -40,19 +40,18 @@ commands:
               --volume=$HOME/.cache/go-build/:/root/.cache/go-build \
               --volume=$HOME/go/pkg/mod/:/go/pkg/mod \
               --volume=$HOME/project/.ssh:/root/.ssh \
-              weaveworks/eksctl-build:$(cat .docker/image_tag) << parameters.cmd >>
+              weaveworks/eksctl-build:$(cat build/docker/image_tag) << parameters.cmd >>
           no_output_timeout: << parameters.timeout >>
   docker-pull-build-image:
     description: Docker pull image
     steps:
-      - run: docker pull "weaveworks/eksctl-build:$(cat .docker/image_tag)"
+      - run: docker pull "weaveworks/eksctl-build:$(cat build/docker/image_tag)"
   restore-cache:
     description: Restore cache
     steps:
       - restore_cache:
           keys:
-            - go-cache-{{ .Branch }}-{{ .Revision }}
-            - go-cache-{{ .Branch }}-
+            - go-cache-{{ checksum "go.sum" }}
             - go-cache-
   save-cache:
     description: Save cache
@@ -63,7 +62,7 @@ commands:
             sudo chown -R circleci.circleci $HOME/.cache/go-build/
             sudo chown -R circleci.circleci $HOME/go/pkg/mod/
       - save_cache:
-          key: go-cache-{{ .Branch }}-{{ .Revision }}
+          key: go-cache-{{ checksum "go.sum" }}
           paths:
             - "/home/circleci/.cache/go-build/"
             - "/home/circleci/go/pkg/mod/"
@@ -73,12 +72,14 @@ commands:
       fail_only:
         type: boolean
         default: true
+      only_for_branches:
+        type: string
     steps:
       - run: exit 0
       - slack/status:
           fail_only: << parameters.fail_only >>
           mentions: 'team-aws'
-          only_for_branches: master
+          only_for_branches: << parameters.only_for_branches >>
 
 jobs:
   test-and-build:
@@ -113,7 +114,8 @@ jobs:
           path: ./test-results
       - store_artifacts:
           path: ./bin
-      - notify-slack
+      - notify-slack:
+          only_for_branches: master
   build-all-distros:
     machine:
       image: ubuntu-1604:201903-01
@@ -131,7 +133,8 @@ jobs:
           cmd: make build-all
       - store_artifacts:
           path: dist/
-      - notify-slack
+      - notify-slack:
+          only_for_branches: master
   release-candidate:
     machine:
       image: ubuntu-1604:201903-01
@@ -153,10 +156,13 @@ jobs:
               --volume=$(pwd):/src \
               --volume=$HOME/.cache/go-build/:/root/.cache/go-build \
               --volume=$HOME/go/pkg/mod/:/go/pkg/mod \
-              weaveworks/eksctl-build:$(cat .docker/image_tag) ./do-release-candidate.sh
+              weaveworks/eksctl-build:$(cat build/docker/image_tag) ./build/scripts/do-release-candidate.sh
           no_output_timeout: 21m
       - store_artifacts:
           path: dist/
+      - notify-slack:
+          fail_only: false
+          only_for_branches: ""
   release:
     machine:
       image: ubuntu-1604:201903-01
@@ -178,10 +184,13 @@ jobs:
               --volume=$(pwd):/src \
               --volume=$HOME/.cache/go-build/:/root/.cache/go-build \
               --volume=$HOME/go/pkg/mod/:/go/pkg/mod \
-              weaveworks/eksctl-build:$(cat .docker/image_tag) ./do-release.sh
+              weaveworks/eksctl-build:$(cat build/docker/image_tag) ./build/scripts/do-release.sh
           no_output_timeout: 21m
       - store_artifacts:
           path: dist/
+      - notify-slack:
+          fail_only: false
+          only_for_branches: ""
   integration-tests:
     machine:
       image: ubuntu-1604:201903-01
@@ -206,7 +215,7 @@ jobs:
                 --env=AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
                 --volume=$(pwd):/src \
                 --volume=$HOME/project/.ssh:/root/.ssh \
-                weaveworks/eksctl-build:$(cat .docker/image_tag) make integration-test TEST_V=1 SSH_KEY_PATH="/root/.ssh/${SSH_KEY_NAME}"
+                weaveworks/eksctl-build:$(cat build/docker/image_tag) make integration-test TEST_V=1 SSH_KEY_PATH="/root/.ssh/${SSH_KEY_NAME}"
           no_output_timeout: 35m
       - store_test_results:
           path: ./test-results
@@ -214,6 +223,7 @@ jobs:
           path: ./test-results
       - notify-slack:
           fail_only: false
+          only_for_branches: master
 
 workflows:
   version: 2
@@ -265,7 +275,7 @@ workflows:
   nightly-build:
     triggers:
       - schedule:
-          cron: "0 4 * * *"
+          cron: "0 9 * * *"
           filters:
             branches:
               only:

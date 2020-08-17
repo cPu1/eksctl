@@ -1,6 +1,8 @@
 package upgrade
 
 import (
+	"time"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/weaveworks/eksctl/pkg/cfn/manager"
@@ -11,18 +13,13 @@ import (
 	"github.com/weaveworks/eksctl/pkg/eks"
 )
 
-type upgradeOptions struct {
-	nodeGroupName     string
-	kubernetesVersion string
-}
-
 func upgradeNodeGroupCmd(cmd *cmdutils.Cmd) {
 	cfg := api.NewClusterConfig()
 	cmd.ClusterConfig = cfg
 
 	cmd.SetDescription("nodegroup", "Upgrade nodegroup", "")
 
-	var options upgradeOptions
+	var options managed.UpgradeOptions
 	cmd.CobraCommand.RunE = func(_ *cobra.Command, args []string) error {
 		cmd.NameArg = cmdutils.GetNameArg(args)
 		return upgradeNodeGroup(cmd, options)
@@ -30,37 +27,42 @@ func upgradeNodeGroupCmd(cmd *cmdutils.Cmd) {
 
 	cmd.FlagSetGroup.InFlagSet("General", func(fs *pflag.FlagSet) {
 		fs.StringVarP(&cfg.Metadata.Name, "cluster", "", "", "EKS cluster name")
-		fs.StringVarP(&options.nodeGroupName, "name", "", "", "Nodegroup name")
-		fs.StringVarP(&options.kubernetesVersion, "kubernetes-version", "", "", "Kubernetes version")
-		cmdutils.AddRegionFlag(fs, cmd.ProviderConfig)
-		cmdutils.AddConfigFileFlag(fs, &cmd.ClusterConfigFile)
+		fs.StringVarP(&options.NodegroupName, "name", "", "", "Nodegroup name")
+		fs.StringVarP(&options.KubernetesVersion, "kubernetes-version", "", "", "Kubernetes version")
+		fs.StringVarP(&options.LaunchTemplateVersion, "launch-template-version", "", "", "Launch template version")
 
-		cmdutils.AddTimeoutFlag(fs, &cmd.ProviderConfig.WaitTimeout)
+		cmdutils.AddRegionFlag(fs, &cmd.ProviderConfig)
+		cmdutils.AddConfigFileFlag(fs, &cmd.ClusterConfigFile)
+		cmd.Wait = true
+		cmdutils.AddWaitFlag(fs, &cmd.Wait, "nodegroup upgrade to complete")
+
+		// during testing, a nodegroup update took 20-25 minutes
+		cmdutils.AddTimeoutFlagWithValue(fs, &cmd.ProviderConfig.WaitTimeout, 35*time.Minute)
 	})
 
-	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, cmd.ProviderConfig, false)
+	cmdutils.AddCommonFlagsForAWS(cmd.FlagSetGroup, &cmd.ProviderConfig, false)
 
 }
 
-func upgradeNodeGroup(cmd *cmdutils.Cmd, options upgradeOptions) error {
+func upgradeNodeGroup(cmd *cmdutils.Cmd, options managed.UpgradeOptions) error {
 	cfg := cmd.ClusterConfig
 	if cfg.Metadata.Name == "" {
 		return cmdutils.ErrMustBeSet(cmdutils.ClusterNameFlag(cmd))
 	}
 
-	if options.nodeGroupName != "" && cmd.NameArg != "" {
-		return cmdutils.ErrFlagAndArg("--name", options.nodeGroupName, cmd.NameArg)
+	if options.NodegroupName != "" && cmd.NameArg != "" {
+		return cmdutils.ErrFlagAndArg("--name", options.NodegroupName, cmd.NameArg)
 	}
 
 	if cmd.NameArg != "" {
-		options.nodeGroupName = cmd.NameArg
+		options.NodegroupName = cmd.NameArg
 	}
 
-	if options.nodeGroupName == "" {
+	if options.NodegroupName == "" {
 		return cmdutils.ErrMustBeSet("name")
 	}
 
-	ctl := eks.New(cmd.ProviderConfig, cmd.ClusterConfig)
+	ctl := eks.New(&cmd.ProviderConfig, cmd.ClusterConfig)
 
 	if err := ctl.CheckAuth(); err != nil {
 		return err
@@ -68,5 +70,5 @@ func upgradeNodeGroup(cmd *cmdutils.Cmd, options upgradeOptions) error {
 
 	stackCollection := manager.NewStackCollection(ctl.Provider, cfg)
 	managedService := managed.NewService(ctl.Provider, stackCollection, cfg.Metadata.Name)
-	return managedService.UpgradeNodeGroup(options.nodeGroupName, options.kubernetesVersion)
+	return managedService.UpgradeNodeGroup(options)
 }

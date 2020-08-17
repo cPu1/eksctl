@@ -2,6 +2,8 @@ package v1alpha5
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/weaveworks/eksctl/pkg/git"
 )
 
 // SetClusterConfigDefaults will set defaults for a given cluster
@@ -26,10 +28,15 @@ func SetClusterConfigDefaults(cfg *ClusterConfig) {
 			cfg.CloudWatch.ClusterLogging.EnableTypes = SupportedCloudWatchClusterLogTypes()
 		}
 	}
+
+	if cfg.PrivateCluster == nil {
+		cfg.PrivateCluster = &PrivateCluster{}
+	}
 }
 
 // SetNodeGroupDefaults will set defaults for a given nodegroup
 func SetNodeGroupDefaults(ng *NodeGroup, meta *ClusterMeta) {
+	setNodeGroupBaseDefaults(ng.NodeGroupBase, meta)
 	if ng.InstanceType == "" {
 		if HasMixedInstances(ng) {
 			ng.InstanceType = "mixed"
@@ -41,40 +48,20 @@ func SetNodeGroupDefaults(ng *NodeGroup, meta *ClusterMeta) {
 		ng.AMIFamily = DefaultNodeImageFamily
 	}
 
-	if ng.SecurityGroups == nil {
-		ng.SecurityGroups = &NodeGroupSGs{
-			AttachIDs: []string{},
-		}
+	if !IsSetAndNonEmptyString(ng.VolumeType) {
+		ng.VolumeType = &DefaultNodeVolumeType
 	}
+
+	if ng.VolumeSize == nil {
+		ng.VolumeSize = &DefaultNodeVolumeSize
+	}
+
 	if ng.SecurityGroups.WithLocal == nil {
 		ng.SecurityGroups.WithLocal = Enabled()
 	}
 	if ng.SecurityGroups.WithShared == nil {
 		ng.SecurityGroups.WithShared = Enabled()
 	}
-
-	if ng.SSH == nil {
-		ng.SSH = &NodeGroupSSH{
-			Allow: Disabled(),
-		}
-	}
-
-	setSSHDefaults(ng.SSH)
-
-	if !IsSetAndNonEmptyString(ng.VolumeType) {
-		ng.VolumeType = &DefaultNodeVolumeType
-	}
-
-	if ng.IAM == nil {
-		ng.IAM = &NodeGroupIAM{}
-	}
-
-	setIAMDefaults(ng.IAM)
-
-	if ng.Labels == nil {
-		ng.Labels = make(map[string]string)
-	}
-	setDefaultNodeLabels(ng.Labels, meta.Name, ng.Name)
 
 	switch ng.AMIFamily {
 	case NodeImageFamilyBottlerocket:
@@ -84,12 +71,22 @@ func SetNodeGroupDefaults(ng *NodeGroup, meta *ClusterMeta) {
 
 // SetManagedNodeGroupDefaults sets default values for a ManagedNodeGroup
 func SetManagedNodeGroupDefaults(ng *ManagedNodeGroup, meta *ClusterMeta) {
+	setNodeGroupBaseDefaults(ng.NodeGroupBase, meta)
 	if ng.AMIFamily == "" {
 		ng.AMIFamily = NodeImageFamilyAmazonLinux2
 	}
-	if ng.InstanceType == "" {
+	if ng.LaunchTemplate == nil && ng.InstanceType == "" {
 		ng.InstanceType = DefaultNodeType
 	}
+
+	if ng.Tags == nil {
+		ng.Tags = make(map[string]string)
+	}
+	ng.Tags[NodeGroupNameTag] = ng.Name
+	ng.Tags[NodeGroupTypeTag] = string(NodeGroupTypeManaged)
+}
+
+func setNodeGroupBaseDefaults(ng *NodeGroupBase, meta *ClusterMeta) {
 	if ng.ScalingConfig == nil {
 		ng.ScalingConfig = &ScalingConfig{}
 	}
@@ -100,6 +97,10 @@ func SetManagedNodeGroupDefaults(ng *ManagedNodeGroup, meta *ClusterMeta) {
 	}
 	setSSHDefaults(ng.SSH)
 
+	if ng.SecurityGroups == nil {
+		ng.SecurityGroups = &NodeGroupSGs{}
+	}
+
 	if ng.IAM == nil {
 		ng.IAM = &NodeGroupIAM{}
 	}
@@ -109,12 +110,6 @@ func SetManagedNodeGroupDefaults(ng *ManagedNodeGroup, meta *ClusterMeta) {
 		ng.Labels = make(map[string]string)
 	}
 	setDefaultNodeLabels(ng.Labels, meta.Name, ng.Name)
-
-	if ng.Tags == nil {
-		ng.Tags = make(map[string]string)
-	}
-	ng.Tags[NodeGroupNameTag] = ng.Name
-	ng.Tags[NodeGroupTypeTag] = string(NodeGroupTypeManaged)
 }
 
 func setIAMDefaults(iamConfig *NodeGroupIAM) {
@@ -196,9 +191,9 @@ func setBottlerocketNodeGroupDefaults(ng *NodeGroup) {
 
 // DefaultClusterNAT will set the default value for Cluster NAT mode
 func DefaultClusterNAT() *ClusterNAT {
-	single := ClusterSingleNAT
+	def := ClusterNATDefault
 	return &ClusterNAT{
-		Gateway: &single,
+		Gateway: &def,
 	}
 }
 
@@ -209,11 +204,11 @@ func SetClusterEndpointAccessDefaults(vpc *ClusterVPC) {
 	}
 
 	if vpc.ClusterEndpoints.PublicAccess == nil {
-		vpc.ClusterEndpoints.PublicAccess = Enabled()
+		vpc.ClusterEndpoints.PublicAccess = ClusterEndpointAccessDefaults().PublicAccess
 	}
 
 	if vpc.ClusterEndpoints.PrivateAccess == nil {
-		vpc.ClusterEndpoints.PrivateAccess = Disabled()
+		vpc.ClusterEndpoints.PrivateAccess = ClusterEndpointAccessDefaults().PrivateAccess
 	}
 }
 
@@ -237,5 +232,50 @@ func (c *ClusterConfig) SetDefaultFargateProfile() {
 				{Namespace: "kube-system"},
 			},
 		},
+	}
+}
+
+// SetDefaultGitSettings sets the default values for the gitops repo and operator settings
+func SetDefaultGitSettings(c *ClusterConfig) {
+	if c.Git == nil {
+		return
+	}
+
+	if c.Git.Operator.CommitOperatorManifests == nil {
+		c.Git.Operator.CommitOperatorManifests = Enabled()
+	}
+
+	if c.Git.Operator.Label == "" {
+		c.Git.Operator.Label = "flux"
+	}
+	if c.Git.Operator.Namespace == "" {
+		c.Git.Operator.Namespace = "flux"
+	}
+	if c.Git.Operator.WithHelm == nil {
+		c.Git.Operator.WithHelm = Enabled()
+	}
+
+	if c.Git.Repo != nil {
+		repo := c.Git.Repo
+		if repo.FluxPath == "" {
+			repo.FluxPath = "flux/"
+		}
+		if repo.Branch == "" {
+			repo.Branch = "master"
+		}
+		if repo.User == "" {
+			repo.User = "Flux"
+		}
+	}
+
+	if c.Git.BootstrapProfile != nil {
+		profile := c.Git.BootstrapProfile
+		if profile.Source != "" && profile.OutputPath == "" {
+			repoName, err := git.RepoName(profile.Source)
+			if err != nil {
+				profile.OutputPath = "./"
+			}
+			profile.OutputPath = "./" + repoName
+		}
 	}
 }

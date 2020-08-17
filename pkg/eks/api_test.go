@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ssm"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	gomegatypes "github.com/onsi/gomega/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/weaveworks/eksctl/pkg/testutils/mockprovider"
 
@@ -94,19 +95,19 @@ var _ = Describe("eksctl API", func() {
 			ng.AMI = "static"
 			ng.InstanceType = "p2.xlarge"
 
-			err := EnsureAMI(provider, "1.14", ng)
+			err := ResolveAMI(provider, "1.14", ng)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(ng.AMI).To(Equal("ami-0ad9a8dc09680cfc2"))
+			Expect(ng.AMI).To(HavePrefix("ami"))
 		})
 		It("should pick a valid AMI for normal instances when AMI is static", func() {
 			ng.AMI = "static"
 			ng.InstanceType = "m5.xlarge"
 
-			err := EnsureAMI(provider, "1.14", ng)
+			err := ResolveAMI(provider, "1.14", ng)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(ng.AMI).To(Equal("ami-0c13bb9cbfd007e56"))
+			Expect(ng.AMI).To(HavePrefix("ami"))
 		})
 		It("should pick a valid AMI for mixed normal instances", func() {
 			ng.AMI = "static"
@@ -115,10 +116,10 @@ var _ = Describe("eksctl API", func() {
 				InstanceTypes: []string{"t3.large", "m5.large", "m5a.large"},
 			}
 
-			err := EnsureAMI(provider, "1.14", ng)
+			err := ResolveAMI(provider, "1.14", ng)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(ng.AMI).To(Equal("ami-0c13bb9cbfd007e56"))
+			Expect(ng.AMI).To(HavePrefix("ami"))
 		})
 		It("should pick a GPU AMI for mixed instances with GPU instance types", func() {
 			ng.AMI = "static"
@@ -127,10 +128,10 @@ var _ = Describe("eksctl API", func() {
 				InstanceTypes: []string{"t3.large", "m5.large", "m5a.large", "p3.2xlarge"},
 			}
 
-			err := EnsureAMI(provider, "1.14", ng)
+			err := ResolveAMI(provider, "1.14", ng)
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(ng.AMI).To(Equal("ami-0ad9a8dc09680cfc2"))
+			Expect(ng.AMI).To(HavePrefix("ami"))
 		})
 	})
 
@@ -151,10 +152,10 @@ var _ = Describe("eksctl API", func() {
 
 		})
 
-		testEnsureAMI := func(expectedAMI string) {
-			err := EnsureAMI(provider, "1.14", ng)
+		testEnsureAMI := func(matcher gomegatypes.GomegaMatcher) {
+			err := ResolveAMI(provider, "1.14", ng)
 			ExpectWithOffset(1, err).ToNot(HaveOccurred())
-			ExpectWithOffset(1, ng.AMI).To(Equal(expectedAMI))
+			ExpectWithOffset(1, ng.AMI).To(matcher)
 		}
 
 		It("should resolve AMI using SSM Parameter Store by default", func() {
@@ -166,12 +167,12 @@ var _ = Describe("eksctl API", func() {
 				},
 			}, nil)
 
-			testEnsureAMI("ami-ssm")
+			testEnsureAMI(Equal("ami-ssm"))
 		})
 
 		It("should use static resolution when specified", func() {
 			ng.AMI = "static"
-			testEnsureAMI("ami-0c13bb9cbfd007e56")
+			testEnsureAMI(HavePrefix("ami"))
 		})
 
 		It("should fall back to auto resolution for Ubuntu", func() {
@@ -179,7 +180,7 @@ var _ = Describe("eksctl API", func() {
 			mockDescribeImages(provider, "ami-ubuntu", func(input *ec2.DescribeImagesInput) bool {
 				return *input.Owners[0] == "099720109477"
 			})
-			testEnsureAMI("ami-ubuntu")
+			testEnsureAMI(Equal("ami-ubuntu"))
 		})
 
 		It("should retrieve the AMI from EC2 when AMI is auto", func() {
@@ -189,18 +190,18 @@ var _ = Describe("eksctl API", func() {
 				return len(input.ImageIds) == 0
 			})
 
-			testEnsureAMI("ami-auto")
+			testEnsureAMI(Equal("ami-auto"))
 		})
 	})
 
 })
 
-func mockDescribeImages(p *mockprovider.MockProvider, amiId string, matcher func(*ec2.DescribeImagesInput) bool) {
+func mockDescribeImages(p *mockprovider.MockProvider, amiID string, matcher func(*ec2.DescribeImagesInput) bool) {
 	p.MockEC2().On("DescribeImages", mock.MatchedBy(matcher)).
 		Return(&ec2.DescribeImagesOutput{
 			Images: []*ec2.Image{
 				{
-					ImageId:        aws.String(amiId),
+					ImageId:        aws.String(amiID),
 					State:          aws.String("available"),
 					OwnerId:        aws.String("123"),
 					RootDeviceType: aws.String("ebs"),

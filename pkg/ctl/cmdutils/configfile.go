@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
+	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils/filter"
 	"github.com/weaveworks/eksctl/pkg/eks"
 	"github.com/weaveworks/eksctl/pkg/utils/names"
 )
@@ -27,25 +28,26 @@ type ClusterConfigLoader interface {
 type commonClusterConfigLoader struct {
 	*Cmd
 
-	flagsIncompatibleWithConfigFile, flagsIncompatibleWithoutConfigFile sets.String
-
-	validateWithConfigFile, validateWithoutConfigFile func() error
+	flagsIncompatibleWithConfigFile    sets.String
+	flagsIncompatibleWithoutConfigFile sets.String
+	validateWithConfigFile             func() error
+	validateWithoutConfigFile          func() error
 }
 
 var (
-	defaultFlagsIncompatibleWithConfigFile = sets.NewString(
+	defaultFlagsIncompatibleWithConfigFile = [...]string{
 		"name",
 		"region",
 		"version",
 		"cluster",
 		"namepace",
-	)
-	defaultFlagsIncompatibleWithoutConfigFile = sets.NewString(
+	}
+	defaultFlagsIncompatibleWithoutConfigFile = [...]string{
 		"only",
 		"include",
 		"exclude",
 		"only-missing",
-	)
+	}
 )
 
 func newCommonClusterConfigLoader(cmd *Cmd) *commonClusterConfigLoader {
@@ -55,9 +57,9 @@ func newCommonClusterConfigLoader(cmd *Cmd) *commonClusterConfigLoader {
 		Cmd: cmd,
 
 		validateWithConfigFile:             nilValidatorFunc,
-		flagsIncompatibleWithConfigFile:    defaultFlagsIncompatibleWithConfigFile,
+		flagsIncompatibleWithConfigFile:    sets.NewString(defaultFlagsIncompatibleWithConfigFile[:]...),
 		validateWithoutConfigFile:          nilValidatorFunc,
-		flagsIncompatibleWithoutConfigFile: defaultFlagsIncompatibleWithoutConfigFile,
+		flagsIncompatibleWithoutConfigFile: sets.NewString(defaultFlagsIncompatibleWithoutConfigFile[:]...),
 	}
 }
 
@@ -96,8 +98,8 @@ func (l *commonClusterConfigLoader) Load() error {
 		}
 	}
 
-	if l.NameArg != "" {
-		return ErrCannotUseWithConfigFile(fmt.Sprintf("name argument %q", l.NameArg))
+	if l.flagsIncompatibleWithConfigFile.Has("name") && l.NameArg != "" {
+		return ErrCannotUseWithConfigFile("name argument")
 	}
 
 	if meta.Name == "" {
@@ -109,6 +111,7 @@ func (l *commonClusterConfigLoader) Load() error {
 	}
 	l.ProviderConfig.Region = meta.Region
 
+	api.SetDefaultGitSettings(l.ClusterConfig)
 	return l.validateWithConfigFile()
 }
 
@@ -142,10 +145,10 @@ func NewMetadataLoader(cmd *Cmd) ClusterConfigLoader {
 }
 
 // NewCreateClusterLoader will load config or use flags for 'eksctl create cluster'
-func NewCreateClusterLoader(cmd *Cmd, ngFilter *NodeGroupFilter, ng *api.NodeGroup, params *CreateClusterCmdParams) ClusterConfigLoader {
+func NewCreateClusterLoader(cmd *Cmd, ngFilter *filter.NodeGroupFilter, ng *api.NodeGroup, params *CreateClusterCmdParams) ClusterConfigLoader {
 	l := newCommonClusterConfigLoader(cmd)
 
-	ngFilter.ExcludeAll = params.WithoutNodeGroup
+	ngFilter.SetExcludeAll(params.WithoutNodeGroup)
 
 	l.flagsIncompatibleWithConfigFile.Insert(
 		"tags",
@@ -180,26 +183,49 @@ func NewCreateClusterLoader(cmd *Cmd, ngFilter *NodeGroupFilter, ng *api.NodeGro
 	l.flagsIncompatibleWithoutConfigFile.Insert("install-vpc-controllers")
 
 	l.validateWithConfigFile = func() error {
-		if l.ClusterConfig.VPC == nil {
-			l.ClusterConfig.VPC = api.NewClusterVPC()
+		clusterConfig := l.ClusterConfig
+		if clusterConfig.VPC == nil {
+			clusterConfig.VPC = api.NewClusterVPC()
 		}
 
-		if l.ClusterConfig.VPC.NAT == nil {
-			l.ClusterConfig.VPC.NAT = api.DefaultClusterNAT()
+		if clusterConfig.VPC.NAT == nil {
+			clusterConfig.VPC.NAT = api.DefaultClusterNAT()
 		}
 
-		if !api.IsSetAndNonEmptyString(l.ClusterConfig.VPC.NAT.Gateway) {
-			*l.ClusterConfig.VPC.NAT.Gateway = api.ClusterSingleNAT
+		if !api.IsSetAndNonEmptyString(clusterConfig.VPC.NAT.Gateway) {
+			*clusterConfig.VPC.NAT.Gateway = api.ClusterSingleNAT
 		}
 
-		api.SetClusterEndpointAccessDefaults(l.ClusterConfig.VPC)
+		if clusterConfig.PrivateCluster != nil && clusterConfig.PrivateCluster.Enabled {
+			if clusterEndpoints := clusterConfig.VPC.ClusterEndpoints; clusterEndpoints != nil && (clusterEndpoints.PublicAccess != nil || clusterEndpoints.PrivateAccess != nil) {
+				return errors.New("vpc.clusterEndpoints cannot be set for a fully-private cluster (privateCluster.enabled) as the endpoint access defaults to private-only")
+			}
+		}
 
-		if !l.ClusterConfig.HasClusterEndpointAccess() {
+		api.SetClusterEndpointAccessDefaults(clusterConfig.VPC)
+
+		if !clusterConfig.HasClusterEndpointAccess() {
 			return api.ErrClusterEndpointNoAccess
 		}
 
-		if l.ClusterConfig.HasAnySubnets() && len(l.ClusterConfig.AvailabilityZones) != 0 {
+		if clusterConfig.HasAnySubnets() && len(clusterConfig.AvailabilityZones) != 0 {
 			return fmt.Errorf("vpc.subnets and availabilityZones cannot be set at the same time")
+		}
+
+		if clusterConfig.Git != nil {
+			repo := clusterConfig.Git.Repo
+			if repo == nil || repo.URL == "" {
+				return ErrMustBeSet("git.repo.URL")
+			}
+
+			if repo.Email == "" {
+				return ErrMustBeSet("git.repo.email")
+			}
+
+			profile := clusterConfig.Git.BootstrapProfile
+			if profile != nil && profile.Source == "" {
+				return ErrMustBeSet("git.bootstrapProfile.source")
+			}
 		}
 
 		return nil
@@ -236,6 +262,8 @@ func NewCreateClusterLoader(cmd *Cmd, ngFilter *NodeGroupFilter, ng *api.NodeGro
 			}
 		}
 
+		api.SetClusterEndpointAccessDefaults(l.ClusterConfig.VPC)
+
 		if params.Fargate {
 			l.ClusterConfig.SetDefaultFargateProfile()
 			// A Fargate-only cluster should NOT have any un-managed node group:
@@ -261,7 +289,7 @@ func NewCreateClusterLoader(cmd *Cmd, ngFilter *NodeGroupFilter, ng *api.NodeGro
 }
 
 // NewCreateNodeGroupLoader will load config or use flags for 'eksctl create nodegroup'
-func NewCreateNodeGroupLoader(cmd *Cmd, ng *api.NodeGroup, ngFilter *NodeGroupFilter, managedNodeGroup bool) ClusterConfigLoader {
+func NewCreateNodeGroupLoader(cmd *Cmd, ng *api.NodeGroup, ngFilter *filter.NodeGroupFilter, managedNodeGroup bool) ClusterConfigLoader {
 	l := newCommonClusterConfigLoader(cmd)
 
 	l.flagsIncompatibleWithConfigFile.Insert(
@@ -287,7 +315,7 @@ func NewCreateNodeGroupLoader(cmd *Cmd, ng *api.NodeGroup, ngFilter *NodeGroupFi
 	)
 
 	l.validateWithConfigFile = func() error {
-		return ngFilter.AppendGlobs(l.Include, l.Exclude, getAllNodeGroupNames(l.ClusterConfig))
+		return ngFilter.AppendGlobs(l.Include, l.Exclude, l.ClusterConfig.GetAllNodeGroupNames())
 	}
 
 	l.validateWithoutConfigFile = func() error {
@@ -334,22 +362,14 @@ func NewCreateNodeGroupLoader(cmd *Cmd, ng *api.NodeGroup, ngFilter *NodeGroupFi
 }
 
 func makeManagedNodegroup(nodeGroup *api.NodeGroup) *api.ManagedNodeGroup {
+	ngBase := *nodeGroup.NodeGroupBase
+	if ngBase.SecurityGroups != nil {
+		ngBase.SecurityGroups = &api.NodeGroupSGs{
+			AttachIDs: ngBase.SecurityGroups.AttachIDs,
+		}
+	}
 	return &api.ManagedNodeGroup{
-		AvailabilityZones: nodeGroup.AvailabilityZones,
-		Name:              nodeGroup.Name,
-		IAM:               nodeGroup.IAM,
-		SSH:               nodeGroup.SSH,
-		InstanceType:      nodeGroup.InstanceType,
-		Labels:            nodeGroup.Labels,
-		Tags:              nodeGroup.Tags,
-		AMIFamily:         nodeGroup.AMIFamily,
-		VolumeSize:        nodeGroup.VolumeSize,
-		PrivateNetworking: nodeGroup.PrivateNetworking,
-		ScalingConfig: &api.ScalingConfig{
-			MinSize:         nodeGroup.MinSize,
-			MaxSize:         nodeGroup.MaxSize,
-			DesiredCapacity: nodeGroup.DesiredCapacity,
-		},
+		NodeGroupBase: &ngBase,
 	}
 }
 
@@ -371,11 +391,11 @@ func normalizeNodeGroup(ng *api.NodeGroup, l *commonClusterConfigLoader) error {
 }
 
 // NewDeleteNodeGroupLoader will load config or use flags for 'eksctl delete nodegroup'
-func NewDeleteNodeGroupLoader(cmd *Cmd, ng *api.NodeGroup, ngFilter *NodeGroupFilter) ClusterConfigLoader {
+func NewDeleteNodeGroupLoader(cmd *Cmd, ng *api.NodeGroup, ngFilter *filter.NodeGroupFilter) ClusterConfigLoader {
 	l := newCommonClusterConfigLoader(cmd)
 
 	l.validateWithConfigFile = func() error {
-		return ngFilter.AppendGlobs(l.Include, l.Exclude, getAllNodeGroupNames(l.ClusterConfig))
+		return ngFilter.AppendGlobs(l.Include, l.Exclude, l.ClusterConfig.GetAllNodeGroupNames())
 	}
 
 	l.flagsIncompatibleWithoutConfigFile.Insert(
@@ -423,7 +443,7 @@ func NewUtilsEnableLoggingLoader(cmd *Cmd) ClusterConfigLoader {
 	return l
 }
 
-// NewUtilsEnableEndpointAccessLoader will load config or use flags for 'eksctl utils vpc-cluster-api-access
+// NewUtilsEnableEndpointAccessLoader will load config or use flags for 'eksctl utils update-cluster-endpoints'.
 func NewUtilsEnableEndpointAccessLoader(cmd *Cmd, privateAccess, publicAccess bool) ClusterConfigLoader {
 	l := newCommonClusterConfigLoader(cmd)
 
@@ -448,6 +468,13 @@ func NewUtilsEnableEndpointAccessLoader(cmd *Cmd, privateAccess, publicAccess bo
 			cmd.ClusterConfig.VPC.ClusterEndpoints.PublicAccess = nil
 		}
 
+		return nil
+	}
+	l.validateWithConfigFile = func() error {
+		if l.ClusterConfig.VPC == nil {
+			l.ClusterConfig.VPC = api.NewClusterVPC()
+		}
+		api.SetClusterEndpointAccessDefaults(l.ClusterConfig.VPC)
 		return nil
 	}
 
@@ -509,7 +536,7 @@ func parseCIDRs(arg string) ([]string, error) {
 }
 
 // NewCreateIAMServiceAccountLoader will laod config or use flags for 'eksctl create iamserviceaccount'
-func NewCreateIAMServiceAccountLoader(cmd *Cmd, saFilter *IAMServiceAccountFilter) ClusterConfigLoader {
+func NewCreateIAMServiceAccountLoader(cmd *Cmd, saFilter *filter.IAMServiceAccountFilter) ClusterConfigLoader {
 	l := newCommonClusterConfigLoader(cmd)
 
 	l.flagsIncompatibleWithConfigFile.Insert(
@@ -588,7 +615,7 @@ func NewGetIAMServiceAccountLoader(cmd *Cmd, sa *api.ClusterIAMServiceAccount) C
 }
 
 // NewDeleteIAMServiceAccountLoader will load config or use flags for 'eksctl delete iamserviceaccount'
-func NewDeleteIAMServiceAccountLoader(cmd *Cmd, sa *api.ClusterIAMServiceAccount, saFilter *IAMServiceAccountFilter) ClusterConfigLoader {
+func NewDeleteIAMServiceAccountLoader(cmd *Cmd, sa *api.ClusterIAMServiceAccount, saFilter *filter.IAMServiceAccountFilter) ClusterConfigLoader {
 	l := newCommonClusterConfigLoader(cmd)
 
 	l.validateWithConfigFile = func() error {
@@ -610,7 +637,7 @@ func NewDeleteIAMServiceAccountLoader(cmd *Cmd, sa *api.ClusterIAMServiceAccount
 		}
 
 		if sa.Name != "" && l.NameArg != "" {
-			return ErrClusterFlagAndArg(l.Cmd, sa.Name, l.NameArg)
+			return ErrFlagAndArg("--name", sa.Name, l.NameArg)
 		}
 
 		if l.NameArg != "" {

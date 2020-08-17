@@ -1,18 +1,22 @@
 include Makefile.common
 
-image_manifest_file = .docker/build_image_manifest
+export PATH := ./build/scripts:$(PATH)
+
+image_manifest_file = build/docker/build_image_manifest
 
 # We use git object hashes for determining the input files used for any given build image
 # E.g. given `weaveworks/eksctl-build:e6e8800773d3adf8e7999a23dcdb07414c66a4da` one can
 # run `git show e6e8800773d3adf8e7999a23dcdb07414c66a4da` to get contents of `.build_image_manifest`,
 # and `git show <hash>` for each of the hashes in the manifest to determine contents of each of the
 # files used in `$(build_image_input)` at the time.
-build_image_tag_file = .docker/image_tag
+build_image_tag_file = build/docker/image_tag
 build_image_tag = $(shell cat $(build_image_tag_file))
 
-build_image_name = weaveworks/eksctl-build:$(build_image_tag)
+build_image = weaveworks/eksctl-build
+build_image_name = $(build_image):$(build_image_tag)
 
-intermediate_container_name = eksctl-build-$(unique_tag)
+eksctl_image = weaveworks/eksctl
+eksctl_image_name = "$(eksctl_image):$${EKSCTL_IMAGE_VERSION}"
 
 docker_build := time docker build
 # We should eventually switch to buildkit, as it has a many feature and cleaner output with timing info,
@@ -21,8 +25,9 @@ docker_build := time docker build
 
 .PHONY: update-build-image-tag
 update-build-image-tag:
-	./build-image-manifest.sh > $(image_manifest_file)
+	build-image-manifest.sh > $(image_manifest_file)
 	git hash-object $(image_manifest_file) > $(build_image_tag_file)
+	sed -i -e "1s|\(BUILD_IMAGE=\).*|\1/$(build_image):$$(cat $(build_image_tag_file))|" Dockerfile
 
 .PHONY: check-build-image-manifest-up-to-date
 check-build-image-manifest-up-to-date: update-build-image-tag ## Update build image manifest and commits the changes
@@ -36,41 +41,28 @@ commit-new-image-tag: update-build-image-tag ## Update build image manifest and 
 .PHONY: build-image
 build-image: check-build-image-manifest-up-to-date ## Build the build image that has all of external dependencies
 	-docker pull $(build_image_name)
-	cp .requirements install-build-deps.sh go.mod go.sum .docker/
+	cp .requirements build/scripts/install-build-deps.sh go.mod go.sum build/docker/
 	$(docker_build) \
-	  --iidfile=.build_image.iid \
 	  --cache-from=$(build_image_name) \
 	  --tag=$(build_image_name) \
-	  --file Dockerfile \
-	  .docker/
+	  build/docker/
 
 .PHONY: push-build-image
 push-build-image: build-image ## Push the build image to the Docker Hub registry
 	docker push $(build_image_name)
 	echo "Remember to commit the image_tag and build_image_manifest files"
 
-.PHONY: push-build-image-github
-push-build-image-github: build-image ## Push the build image to the GitHub registry
-	docker tag $(build_image_name) docker.pkg.github.com/errordeveloper/eksctl/build:$(build_image_tag)
-	docker push docker.pkg.github.com/errordeveloper/eksctl/build:$(build_image_tag)
-
-.PHONY: intermediate-image
-intermediate-image: build-image ## Build the intermediate image that has all artefacts
-	time docker run \
-	  --tty \
-	  --name=$(intermediate_container_name) \
-	  --volume=$(git_toplevel):/src \
-	    $(build_image_name) /src/eksctl-image-builder.sh \
-	  || (docker rm $(intermediate_container_name) ; exit 1)
-	time docker commit $(intermediate_container_name) $(intermediate_image_name) \
-	  && docker rm $(intermediate_container_name)
+.PHONY: eksctl-image
+eksctl-image: build-image ## Build the eksctl image that has release artefacts and no build dependencies
+	$(docker_build) \
+	  --cache-from=$(build_image_name) \
+	  --tag=$(eksctl_image_name) \
+	  --build-arg=BUILD_IMAGE=$(build_image_name) \
+	  $(git_toplevel)
 
 .PHONY: eksctl-image
-eksctl-image: intermediate-image ## Build the eksctl image that has release artefacts and no build dependencies
-	printf 'FROM scratch\nCMD eksctl\nCOPY --from=%s /out /' $(intermediate_image_name) \
-	  | $(docker_build) \
-	      --iidfile=.eksctl_image.iid \
-	      --tag="$(eksctl_image_name)" -
+push-eksctl-image: eksctl-image
+	docker push $(eksctl_image_name)
 
 .PHONY: build test
 build test: ## Run targets from Makefile using the build image
@@ -79,20 +71,3 @@ build test: ## Run targets from Makefile using the build image
 	  --rm \
 	  --volume=$(git_toplevel):/src \
 	    $(build_image_name) make $@
-
-docker_run_release_script = docker run \
-  --env=GITHUB_TOKEN \
-  --env=CIRCLE_TAG \
-  --env=CIRCLE_PROJECT_USERNAME \
-  --env=CIRCLE_PROJECT_REPONAME \
-  --volume=$(git_toplevel):/src \
-  --workdir=/src \
-    $(build_image_name)
-
-.PHONY: release-candidate
-release-candidate: ## Create a new eksctl release candidate
-	$(call docker_run_release_script) ./do-release-candidate.sh
-
-.PHONY: release
-release: ## Create a new eksctl release
-	$(call docker_run_release_script) ./do-release.sh

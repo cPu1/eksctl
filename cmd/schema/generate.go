@@ -1,40 +1,48 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
-	"strings"
+	"path/filepath"
 
-	"github.com/alecthomas/jsonschema"
-	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
-	"sigs.k8s.io/yaml"
+	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io"
+	"github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
+	schemapkg "github.com/weaveworks/eksctl/pkg/schema"
 )
 
 func main() {
-
 	if len(os.Args) != 2 {
 		panic("expected one argument with the output file")
 	}
 	outputFile := os.Args[1]
 
-	var document strings.Builder
-	document.WriteString(`# Config file schema
-
-`)
-	document.WriteString("```yaml\n")
-
-	schema := jsonschema.Reflect(&api.ClusterConfig{})
-	yamlSchema, err := yaml.Marshal(schema.Definitions)
-	if err != nil {
-		panic(err)
-	}
-	document.Write(yamlSchema)
-	document.WriteString("```\n")
-
-	err = ioutil.WriteFile(outputFile, []byte(document.String()), 0755)
-
+	input := filepath.Join("../../../..", "pkg", "apis", "eksctl.io")
+	schema, err := schemapkg.GenerateSchema(input, "v1alpha5", "ClusterConfig", false)
 	if err != nil {
 		panic(err)
 	}
 
+	// We add some examples and exclude some descriptions
+	cc := schema.Definitions["ClusterConfig"]
+	if t, ok := cc.Properties["kind"]; ok {
+		t.Enum = []string{"ClusterConfig"}
+		t.Description = ""
+		t.HTMLDescription = ""
+	}
+	if t, ok := cc.Properties["apiVersion"]; ok {
+		t.Enum = []string{fmt.Sprintf("%s/%s", api.GroupName, v1alpha5.CurrentGroupVersion)}
+		t.Description = ""
+		t.HTMLDescription = ""
+	}
+	cc.Required = append(cc.Required, "kind", "apiVersion")
+
+	bytes, err := schemapkg.ToJSON(schema)
+	if err != nil {
+		panic(err)
+	}
+	err = ioutil.WriteFile(outputFile, bytes, 0755)
+	if err != nil {
+		panic(err)
+	}
 }

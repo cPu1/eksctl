@@ -1,36 +1,59 @@
 package v1alpha5
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
+	"reflect"
 
 	"github.com/weaveworks/eksctl/pkg/utils/ipnet"
 )
 
+// Values for `ClusterNAT`
+const (
+	// ClusterHighlyAvailableNAT configures a highly available NAT gateway
+	ClusterHighlyAvailableNAT = "HighlyAvailable"
+
+	// ClusterSingleNAT configures a single NAT gateway
+	ClusterSingleNAT = "Single"
+
+	// ClusterDisableNAT disables NAT
+	ClusterDisableNAT = "Disable"
+
+	// (default)
+	ClusterNATDefault = ClusterSingleNAT
+)
+
 type (
-	// ClusterVPC holds global subnet and all child public/private subnet
+	// ClusterVPC holds global subnet and all child subnets
 	ClusterVPC struct {
+		// global CIDR and VPC ID
 		// +optional
-		Network `json:",inline"` // global CIDR and VPC ID
+		Network
+		// SecurityGroup for communication between control plane and nodes
 		// +optional
-		SecurityGroup string `json:"securityGroup,omitempty"` // cluster SG
-		// subnets are either public or private for use with separate nodegroups
-		// these are keyed by AZ for convenience
+		SecurityGroup string `json:"securityGroup,omitempty"`
+		// Subnets are keyed by AZ for convenience.
+		// See [this example](/examples/reusing-iam-and-vpc/)
+		// as well as [using existing
+		// VPCs](/usage/vpc-networking/#use-existing-vpc-any-custom-configuration).
 		// +optional
 		Subnets *ClusterSubnets `json:"subnets,omitempty"`
-		// for additional CIDR associations, e.g. to use with separate CIDR for
+		// for additional CIDR associations, e.g. a CIDR for
 		// private subnets or any ad-hoc subnets
 		// +optional
 		ExtraCIDRs []*ipnet.IPNet `json:"extraCIDRs,omitempty"`
 		// for pre-defined shared node SG
 		SharedNodeSecurityGroup string `json:"sharedNodeSecurityGroup,omitempty"`
+		// AutoAllocateIPV6 requests an IPv6 CIDR block with /56 prefix for the VPC
 		// +optional
 		AutoAllocateIPv6 *bool `json:"autoAllocateIPv6,omitempty"`
 		// +optional
 		NAT *ClusterNAT `json:"nat,omitempty"`
+		// See [managing access to API](/usage/vpc-networking/#managing-access-to-the-kubernetes-api-server-endpoints)
 		// +optional
 		ClusterEndpoints *ClusterEndpoints `json:"clusterEndpoints,omitempty"`
+		// PublicAccessCIDRs are which CIDR blocks to allow access to public
+		// k8s API endpoint
 		// +optional
 		PublicAccessCIDRs []string `json:"publicAccessCIDRs,omitempty"`
 	}
@@ -48,8 +71,9 @@ type (
 		// +optional
 		CIDR *ipnet.IPNet `json:"cidr,omitempty"`
 	}
-	// ClusterNAT holds NAT gateway configuration options
+	// ClusterNAT NAT config
 	ClusterNAT struct {
+		// Valid variants are `ClusterNAT` constants
 		Gateway *string `json:"gateway,omitempty"`
 	}
 
@@ -218,15 +242,7 @@ func (c *ClusterConfig) UpdateEndpointsMsg() string {
 
 // EndpointsEqual returns true of two endpoints have same values after dereferencing any pointers
 func EndpointsEqual(a, b ClusterEndpoints) bool {
-	ajson, err := json.Marshal(a)
-	if err != nil {
-		return false
-	}
-	bjson, err := json.Marshal(b)
-	if err != nil {
-		return false
-	}
-	return string(ajson) == string(bjson)
+	return reflect.DeepEqual(a, b)
 }
 
 //HasClusterEndpointAccess determines if endpoint access was configured in config file or not

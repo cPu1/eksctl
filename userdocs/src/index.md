@@ -1,14 +1,17 @@
-# `eksctl` - The official CLI for Amazon EKS
+# eksctl - The official CLI for Amazon EKS
 
-sponsored by [![Weaveworks](img/weaveworks.svg)](https://www.weave.works/) and built by [![Contributors](img/gophers.png)](https://github.com/weaveworks/eksctl/graphs/contributors) on [![Github](img/octocat.svg)](https://github.com/weaveworks/eksctl)
+sponsored by [![Weaveworks](img/empty.svg#wwinline)](https://www.weave.works/) and built by [![Contributors](img/gophers.png#inline)](https://github.com/weaveworks/eksctl/graphs/contributors) on [![Github](img/empty.svg#gitinline)](https://github.com/weaveworks/eksctl)
 
 `eksctl` is a simple CLI tool for creating clusters on EKS - Amazon's new managed Kubernetes service for EC2.
 It is written in Go, uses CloudFormation, was created by [Weaveworks](https://www.weave.works/) and it welcomes
 contributions from the community. Create a basic cluster in minutes with just one command:
 
+ <h2 id="intro-code">
 ```console
 eksctl create cluster
 ```
+</h2>
+
 A cluster will be created with default parameters:
 
 - exciting auto-generated name, e.g., `fabulous-mushroom-1527688624`
@@ -93,8 +96,7 @@ To learn more about how to create clusters and other features continue reading t
 [![Circle CI](https://circleci.com/gh/weaveworks/eksctl/tree/master.svg?style=shield)](https://circleci.com/gh/weaveworks/eksctl/tree/master) [![Coverage Status](https://coveralls.io/repos/github/weaveworks/eksctl/badge.svg?branch=master)](https://coveralls.io/github/weaveworks/eksctl?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/weaveworks/eksctl)](https://goreportcard.com/report/github.com/weaveworks/eksctl)
 ![Gophers: E, K, S, C, T, & L](img/eksctl.png)
 
-> **_Credits_**
->
-> _Original Gophers drawn by [Ashley McNamara](https://twitter.com/ashleymcnamara), unique E, K, S, C, T & L Gopher identities had been produced with [Gopherize.me](https://gopherize.me/)._
->
-> Site powered by [Netlify ©](https://netlify.com)
+!!! credits
+    _Original Gophers drawn by [Ashley McNamara](https://twitter.com/ashleymcnamara), unique E, K, S, C, T & L Gopher identities had been produced with [Gopherize.me](https://gopherize.me/)._
+
+    Site powered by [Netlify ©](https://netlify.com)
