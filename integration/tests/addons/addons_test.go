@@ -160,7 +160,7 @@ var _ = Describe("(Integration) [EKS Addons test]", func() {
 				)
 			Expect(cmd).To(RunSuccessfully())
 
-			rawClient := getRawClient(clusterName)
+			rawClient := testutils.MakeRawClient(clusterName, params.Region)
 			_, err := rawClient.ClientSet().AppsV1().DaemonSets("kube-system").Get(context.Background(), "aws-node", metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -177,20 +177,3 @@ var _ = Describe("(Integration) [EKS Addons test]", func() {
 		))
 	})
 })
-
-func getRawClient(clusterName string) *kubewrapper.RawClient {
-	cfg := &api.ClusterConfig{
-		Metadata: &api.ClusterMeta{
-			Name:   clusterName,
-			Region: params.Region,
-		},
-	}
-	ctl, err := eks.New(&api.ProviderConfig{Region: params.Region}, cfg)
-	Expect(err).NotTo(HaveOccurred())
-
-	err = ctl.RefreshClusterStatus(cfg)
-	Expect(err).ShouldNot(HaveOccurred())
-	rawClient, err := ctl.NewRawClient(cfg)
-	Expect(err).ToNot(HaveOccurred())
-	return rawClient
-}
