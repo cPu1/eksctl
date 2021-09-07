@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package eks_connector_test
@@ -98,7 +99,7 @@ var _ = Describe("(Integration) [EKS Connector test]", func() {
 				return *connectedCluster.Cluster.Status
 			}, "5m", "8s").Should(Equal("ACTIVE"))
 
-			cmd = params.EksctlGetCmd.WithArgs("clusters", "-n", params.ClusterName)
+			cmd = params.EksctlGetCmd.WithArgs("clusters", "-n", connectedClusterName)
 			Expect(cmd).To(RunSuccessfullyWithOutputString(ContainSubstring("OTHER")))
 
 			By("deregistering the cluster")
