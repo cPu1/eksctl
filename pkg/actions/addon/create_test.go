@@ -71,7 +71,7 @@ var _ = Describe("Create", func() {
 	JustBeforeEach(func() {
 		var err error
 
-		oidc, err = iamoidc.NewOpenIDConnectManager(nil, "456123987123", "https://oidc.eks.us-west-2.amazonaws.com/id/A39A2842863C47208955D753DE205E6E", "aws")
+		oidc, err = iamoidc.NewOpenIDConnectManager(nil, "456123987123", "https://oidc.eks.us-west-2.amazonaws.com/id/A39A2842863C47208955D753DE205E6E", "aws", nil)
 		Expect(err).ToNot(HaveOccurred())
 		oidc.ProviderARN = "arn:aws:iam::456123987123:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/A39A2842863C47208955D753DE205E6E"
 
@@ -437,6 +437,30 @@ var _ = Describe("Create", func() {
 			output, err := resourceSet.RenderJSON()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(output)).To(ContainSubstring("arn-1"))
+		})
+	})
+
+	When("wellKnownPolicies is configured", func() {
+		It("uses wellKnownPolicies to create a role to attach to the addon", func() {
+			err := manager.Create(&api.Addon{
+				Name:    "my-addon",
+				Version: "v1.0.0-eksbuild.1",
+				WellKnownPolicies: api.WellKnownPolicies{
+					AutoScaler: true,
+				},
+			}, false)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(fakeStackManager.CreateStackCallCount()).To(Equal(1))
+			name, resourceSet, tags, _, _ := fakeStackManager.CreateStackArgsForCall(0)
+			Expect(name).To(Equal("eksctl-my-cluster-addon-my-addon"))
+			Expect(resourceSet).NotTo(BeNil())
+			Expect(tags).To(Equal(map[string]string{
+				api.AddonNameTag: "my-addon",
+			}))
+			output, err := resourceSet.RenderJSON()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(output)).To(ContainSubstring("autoscaling:SetDesiredCapacity"))
 		})
 	})
 

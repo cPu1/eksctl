@@ -1,20 +1,25 @@
 package nodebootstrap
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/kris-nova/logger"
 	"github.com/pkg/errors"
+
 	"github.com/weaveworks/eksctl/pkg/nodebootstrap/utils"
+
+	kubeletapi "k8s.io/kubelet/config/v1beta1"
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/cloudconfig"
 	"github.com/weaveworks/eksctl/pkg/nodebootstrap/bindata"
 	"github.com/weaveworks/eksctl/pkg/nodebootstrap/legacy"
-	kubeletapi "k8s.io/kubelet/config/v1beta1"
 )
 
 //go:generate ${GOBIN}/go-bindata -pkg bindata -prefix assets -nometadata -o bindata/assets.go bindata/assets
@@ -27,41 +32,81 @@ const (
 	commonLinuxBootScript = "bootstrap.helper.sh"
 )
 
-//go:generate counterfeiter -o fakes/fake_bootstrapper.go . Bootstrapper
+//go:generate go run github.com/maxbrunsfeld/counterfeiter/v6 -generate
+
+//counterfeiter:generate -o fakes/fake_bootstrapper.go . Bootstrapper
 type Bootstrapper interface {
 	// UserData returns userdata for bootstrapping nodes
 	UserData() (string, error)
 }
 
 // NewBootstrapper returns the correct bootstrapper for the AMI family
-func NewBootstrapper(clusterSpec *api.ClusterConfig, ng *api.NodeGroup) Bootstrapper {
+func NewBootstrapper(clusterConfig *api.ClusterConfig, ng *api.NodeGroup) (Bootstrapper, error) {
+	if ng.ClusterDNS == "" {
+		clusterDNS, err := GetClusterDNS(clusterConfig)
+		if err != nil {
+			return nil, err
+		}
+		ng.ClusterDNS = clusterDNS
+	}
 	if api.IsWindowsImage(ng.AMIFamily) {
-		return NewWindowsBootstrapper(clusterSpec.Metadata.Name, ng)
+		return NewWindowsBootstrapper(clusterConfig, ng), nil
 	}
 	switch ng.AMIFamily {
 	case api.NodeImageFamilyUbuntu2004, api.NodeImageFamilyUbuntu1804:
 		// TODO remove
 		if ng.CustomAMI {
 			logger.Warning("Custom AMI detected for nodegroup %s, using legacy nodebootstrap mechanism. Please refer to https://github.com/weaveworks/eksctl/issues/3563 for upcoming breaking changes", ng.Name)
-			return legacy.NewUbuntuBootstrapper(clusterSpec, ng)
+			return legacy.NewUbuntuBootstrapper(clusterConfig, ng), nil
 		}
-		return NewUbuntuBootstrapper(clusterSpec.Metadata.Name, ng)
+		return NewUbuntuBootstrapper(clusterConfig, ng), nil
 	case api.NodeImageFamilyBottlerocket:
-		return NewBottlerocketBootstrapper(clusterSpec, ng)
+		return NewBottlerocketBootstrapper(clusterConfig, ng), nil
 	case api.NodeImageFamilyAmazonLinux2:
 		// TODO remove
 		if ng.CustomAMI {
 			logger.Warning("Custom AMI detected for nodegroup %s, using legacy nodebootstrap mechanism. Please refer to https://github.com/weaveworks/eksctl/issues/3563 for upcoming breaking changes", ng.Name)
-			return legacy.NewAL2Bootstrapper(clusterSpec, ng)
+			return legacy.NewAL2Bootstrapper(clusterConfig, ng), nil
 		}
-		return NewAL2Bootstrapper(clusterSpec.Metadata.Name, ng)
-	}
+		return NewAL2Bootstrapper(clusterConfig, ng), nil
+	default:
+		return nil, errors.Errorf("unrecognized AMI family %q for creating bootstrapper", ng.AMIFamily)
 
+	}
+}
+
+// NewManagedBootstrapper creates a new bootstrapper for managed nodegroups based on the AMI family
+func NewManagedBootstrapper(clusterConfig *api.ClusterConfig, ng *api.ManagedNodeGroup) Bootstrapper {
+	switch ng.AMIFamily {
+	case api.NodeImageFamilyAmazonLinux2:
+		return NewManagedAL2Bootstrapper(ng)
+	case api.NodeImageFamilyBottlerocket:
+		return NewBottlerocketBootstrapper(clusterConfig, ng)
+	case api.NodeImageFamilyUbuntu1804, api.NodeImageFamilyUbuntu2004:
+		return NewUbuntuBootstrapper(clusterConfig, ng)
+	}
 	return nil
 }
 
-func linuxConfig(bootScript, clusterName string, ng *api.NodeGroup, scripts ...string) (string, error) {
+// GetClusterDNS returns the DNS address to use
+func GetClusterDNS(clusterConfig *api.ClusterConfig) (string, error) {
+	networkConfig := clusterConfig.Status.KubernetesNetworkConfig
+	if networkConfig == nil {
+		return "", nil
+	}
+
+	ip, _, err := net.ParseCIDR(networkConfig.ServiceIPv4CIDR)
+	if err != nil {
+		return "", errors.Wrapf(err, "unexpected error parsing kubernetesNetworkConfig.serviceIPv4CIDR: %q", networkConfig.ServiceIPv4CIDR)
+	}
+	ip = ip.To4()
+	ip[net.IPv4len-1] = 10
+	return ip.String(), nil
+}
+
+func linuxConfig(clusterConfig *api.ClusterConfig, bootScript string, np api.NodePool, scripts ...string) (string, error) {
 	config := cloudconfig.New()
+	ng := np.BaseNodeGroup()
 
 	for _, command := range ng.PreBootstrapCommands {
 		config.AddShellCommand(command)
@@ -76,12 +121,17 @@ func linuxConfig(bootScript, clusterName string, ng *api.NodeGroup, scripts ...s
 		config.AddShellCommand(*ng.OverrideBootstrapCommand)
 	} else {
 		scripts = append(scripts, commonLinuxBootScript, bootScript)
-		kubeletConf, err := makeKubeletExtraConf(ng)
+		var kubeletExtraConf *api.InlineDocument
+		if unmanaged, ok := np.(*api.NodeGroup); ok {
+			kubeletExtraConf = unmanaged.KubeletExtraConfig
+		}
+		kubeletConf, err := makeKubeletExtraConf(kubeletExtraConf)
 		if err != nil {
 			return "", err
 		}
-		envFile := makeBootstrapEnv(clusterName, ng)
-		files = append(files, kubeletConf, envFile)
+		files = append(files, kubeletConf)
+		envFile := makeBootstrapEnv(clusterConfig, np)
+		files = append(files, envFile)
 	}
 
 	if err := addFilesAndScripts(config, files, scripts); err != nil {
@@ -96,12 +146,11 @@ func linuxConfig(bootScript, clusterName string, ng *api.NodeGroup, scripts ...s
 	return body, nil
 }
 
-func makeKubeletExtraConf(ng *api.NodeGroup) (cloudconfig.File, error) {
-	if ng.KubeletExtraConfig == nil {
-		ng.KubeletExtraConfig = &api.InlineDocument{}
+func makeKubeletExtraConf(kubeletExtraConf *api.InlineDocument) (cloudconfig.File, error) {
+	if kubeletExtraConf == nil {
+		kubeletExtraConf = &api.InlineDocument{}
 	}
-
-	data, err := json.Marshal(ng.KubeletExtraConfig)
+	data, err := json.Marshal(kubeletExtraConf)
 	if err != nil {
 		return cloudconfig.File{}, err
 	}
@@ -117,30 +166,45 @@ func makeKubeletExtraConf(ng *api.NodeGroup) (cloudconfig.File, error) {
 	}, nil
 }
 
-func makeBootstrapEnv(clusterName string, ng *api.NodeGroup) cloudconfig.File {
-	variables := []string{
-		fmt.Sprintf("NODE_LABELS=%s", kvs(ng.Labels)),
-		fmt.Sprintf("NODE_TAINTS=%s", utils.FormatTaints(ng.Taints)),
-		fmt.Sprintf("CLUSTER_NAME=%s", clusterName),
+func makeBootstrapEnv(clusterConfig *api.ClusterConfig, np api.NodePool) cloudconfig.File {
+	ng := np.BaseNodeGroup()
+	variables := map[string]string{
+		"CLUSTER_NAME":   clusterConfig.Metadata.Name,
+		"API_SERVER_URL": clusterConfig.Status.Endpoint,
+		"B64_CLUSTER_CA": base64.StdEncoding.EncodeToString(clusterConfig.Status.CertificateAuthorityData),
+		"NODE_LABELS":    formatLabels(ng.Labels),
+		"NODE_TAINTS":    utils.FormatTaints(np.NGTaints()),
 	}
 
-	if ng.ClusterDNS != "" {
-		variables = append(variables, fmt.Sprintf("CLUSTER_DNS=%s", ng.ClusterDNS))
+	if ng.MaxPodsPerNode > 0 {
+		variables["MAX_PODS"] = strconv.Itoa(ng.MaxPodsPerNode)
+	}
+
+	if unmanaged, ok := np.(*api.NodeGroup); ok && unmanaged.ClusterDNS != "" {
+		variables["CLUSTER_DNS"] = unmanaged.ClusterDNS
+	}
+
+	if unmanaged, ok := np.(*api.NodeGroup); ok && ng.AMIFamily == api.NodeImageFamilyAmazonLinux2 {
+		variables["CONTAINER_RUNTIME"] = unmanaged.GetContainerRuntime()
 	}
 
 	return cloudconfig.File{
 		Path:    configDir + envFile,
-		Content: strings.Join(variables, "\n"),
+		Content: makeKeyValues(variables, "\n"),
 	}
 }
 
-func kvs(kv map[string]string) string {
+func makeKeyValues(kv map[string]string, separator string) string {
 	var params []string
 	for k, v := range kv {
 		params = append(params, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	return strings.Join(params, ",")
+	return strings.Join(params, separator)
+}
+
+func formatLabels(labels map[string]string) string {
+	return makeKeyValues(labels, ",")
 }
 
 func addFilesAndScripts(config *cloudconfig.CloudConfig, files []cloudconfig.File, scripts []string) error {

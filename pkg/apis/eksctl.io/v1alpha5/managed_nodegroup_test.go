@@ -30,10 +30,10 @@ var _ = Describe("Managed Nodegroup Validation", func() {
 					AMI:                      "",
 					OverrideBootstrapCommand: nil,
 					PreBootstrapCommands:     nil,
-					AMIFamily:                "Ubuntu1804",
+					AMIFamily:                "WindowsServer2019FullContainer",
 				},
 			},
-			errMsg: "only AmazonLinux2 is supported",
+			errMsg: `"WindowsServer2019FullContainer" is not supported for managed nodegroups`,
 		}),
 		Entry("Supported AMI family", &nodeGroupCase{
 			ng: &ManagedNodeGroup{
@@ -150,11 +150,6 @@ var _ = Describe("Managed Nodegroup Validation", func() {
 				Allow: Enabled(),
 			},
 		}),
-		Entry("enableSSM", &NodeGroupBase{
-			SSH: &NodeGroupSSH{
-				EnableSSM: Enabled(),
-			},
-		}),
 		Entry("volumeSize", &NodeGroupBase{
 			VolumeSize: aws.Int(100),
 		}),
@@ -168,6 +163,57 @@ var _ = Describe("Managed Nodegroup Validation", func() {
 			SecurityGroups: &NodeGroupSGs{
 				AttachIDs: []string{"sg-custom"},
 			},
+		}),
+	)
+
+	type updateConfigEntry struct {
+		unavailable           *int
+		unavailablePercentage *int
+		maxSize               *int
+		valid                 bool
+	}
+
+	DescribeTable("UpdateConfig", func(e updateConfigEntry) {
+		mng := &ManagedNodeGroup{
+			NodeGroupBase: &NodeGroupBase{
+				AMIFamily: "AmazonLinux2",
+				ScalingConfig: &ScalingConfig{
+					MaxSize: e.maxSize,
+				},
+			},
+			UpdateConfig: &NodeGroupUpdateConfig{
+				MaxUnavailable:           e.unavailable,
+				MaxUnavailablePercentage: e.unavailablePercentage,
+			},
+		}
+		SetManagedNodeGroupDefaults(mng, &ClusterMeta{Name: "managed-cluster"})
+		err := ValidateManagedNodeGroup(mng, 0)
+		if e.valid {
+			Expect(err).ToNot(HaveOccurred())
+		} else {
+			Expect(err).To(HaveOccurred())
+		}
+	},
+		Entry("max unavailable set", updateConfigEntry{
+			unavailable: aws.Int(1),
+			valid:       true,
+		}),
+		Entry("max unavailable specified in percentage", updateConfigEntry{
+			unavailablePercentage: aws.Int(1),
+			valid:                 true,
+		}),
+		Entry("returns an error if both are set", updateConfigEntry{
+			unavailable:           aws.Int(1),
+			unavailablePercentage: aws.Int(1),
+			valid:                 false,
+		}),
+		Entry("returns an error if max unavailable is greater than maxSize", updateConfigEntry{
+			unavailable: aws.Int(100),
+			maxSize:     aws.Int(5),
+			valid:       false,
+		}),
+		Entry("returns an error if both maxUnavailable and maxUnavailablePercentage are not set", updateConfigEntry{
+			valid: false,
 		}),
 	)
 })

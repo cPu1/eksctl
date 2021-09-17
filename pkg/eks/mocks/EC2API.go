@@ -1343,6 +1343,84 @@ func (_m *EC2API) AssociateIamInstanceProfileWithContext(_a0 context.Context, _a
 	return r0, r1
 }
 
+// AssociateInstanceEventWindow provides a mock function with given fields: _a0
+func (_m *EC2API) AssociateInstanceEventWindow(_a0 *ec2.AssociateInstanceEventWindowInput) (*ec2.AssociateInstanceEventWindowOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.AssociateInstanceEventWindowOutput
+	if rf, ok := ret.Get(0).(func(*ec2.AssociateInstanceEventWindowInput) *ec2.AssociateInstanceEventWindowOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.AssociateInstanceEventWindowOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.AssociateInstanceEventWindowInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AssociateInstanceEventWindowRequest provides a mock function with given fields: _a0
+func (_m *EC2API) AssociateInstanceEventWindowRequest(_a0 *ec2.AssociateInstanceEventWindowInput) (*request.Request, *ec2.AssociateInstanceEventWindowOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.AssociateInstanceEventWindowInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.AssociateInstanceEventWindowOutput
+	if rf, ok := ret.Get(1).(func(*ec2.AssociateInstanceEventWindowInput) *ec2.AssociateInstanceEventWindowOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.AssociateInstanceEventWindowOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// AssociateInstanceEventWindowWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) AssociateInstanceEventWindowWithContext(_a0 context.Context, _a1 *ec2.AssociateInstanceEventWindowInput, _a2 ...request.Option) (*ec2.AssociateInstanceEventWindowOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.AssociateInstanceEventWindowOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.AssociateInstanceEventWindowInput, ...request.Option) *ec2.AssociateInstanceEventWindowOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.AssociateInstanceEventWindowOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.AssociateInstanceEventWindowInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // AssociateRouteTable provides a mock function with given fields: _a0
 func (_m *EC2API) AssociateRouteTable(_a0 *ec2.AssociateRouteTableInput) (*ec2.AssociateRouteTableOutput, error) {
 	ret := _m.Called(_a0)
@@ -1647,6 +1725,84 @@ func (_m *EC2API) AssociateTransitGatewayRouteTableWithContext(_a0 context.Conte
 
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, *ec2.AssociateTransitGatewayRouteTableInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AssociateTrunkInterface provides a mock function with given fields: _a0
+func (_m *EC2API) AssociateTrunkInterface(_a0 *ec2.AssociateTrunkInterfaceInput) (*ec2.AssociateTrunkInterfaceOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.AssociateTrunkInterfaceOutput
+	if rf, ok := ret.Get(0).(func(*ec2.AssociateTrunkInterfaceInput) *ec2.AssociateTrunkInterfaceOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.AssociateTrunkInterfaceOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.AssociateTrunkInterfaceInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AssociateTrunkInterfaceRequest provides a mock function with given fields: _a0
+func (_m *EC2API) AssociateTrunkInterfaceRequest(_a0 *ec2.AssociateTrunkInterfaceInput) (*request.Request, *ec2.AssociateTrunkInterfaceOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.AssociateTrunkInterfaceInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.AssociateTrunkInterfaceOutput
+	if rf, ok := ret.Get(1).(func(*ec2.AssociateTrunkInterfaceInput) *ec2.AssociateTrunkInterfaceOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.AssociateTrunkInterfaceOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// AssociateTrunkInterfaceWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) AssociateTrunkInterfaceWithContext(_a0 context.Context, _a1 *ec2.AssociateTrunkInterfaceInput, _a2 ...request.Option) (*ec2.AssociateTrunkInterfaceOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.AssociateTrunkInterfaceOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.AssociateTrunkInterfaceInput, ...request.Option) *ec2.AssociateTrunkInterfaceOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.AssociateTrunkInterfaceOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.AssociateTrunkInterfaceInput, ...request.Option) error); ok {
 		r1 = rf(_a0, _a1, _a2...)
 	} else {
 		r1 = ret.Error(1)
@@ -4385,6 +4541,84 @@ func (_m *EC2API) CreateImageWithContext(_a0 context.Context, _a1 *ec2.CreateIma
 	return r0, r1
 }
 
+// CreateInstanceEventWindow provides a mock function with given fields: _a0
+func (_m *EC2API) CreateInstanceEventWindow(_a0 *ec2.CreateInstanceEventWindowInput) (*ec2.CreateInstanceEventWindowOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.CreateInstanceEventWindowOutput
+	if rf, ok := ret.Get(0).(func(*ec2.CreateInstanceEventWindowInput) *ec2.CreateInstanceEventWindowOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.CreateInstanceEventWindowOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.CreateInstanceEventWindowInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CreateInstanceEventWindowRequest provides a mock function with given fields: _a0
+func (_m *EC2API) CreateInstanceEventWindowRequest(_a0 *ec2.CreateInstanceEventWindowInput) (*request.Request, *ec2.CreateInstanceEventWindowOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.CreateInstanceEventWindowInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.CreateInstanceEventWindowOutput
+	if rf, ok := ret.Get(1).(func(*ec2.CreateInstanceEventWindowInput) *ec2.CreateInstanceEventWindowOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.CreateInstanceEventWindowOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// CreateInstanceEventWindowWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) CreateInstanceEventWindowWithContext(_a0 context.Context, _a1 *ec2.CreateInstanceEventWindowInput, _a2 ...request.Option) (*ec2.CreateInstanceEventWindowOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.CreateInstanceEventWindowOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.CreateInstanceEventWindowInput, ...request.Option) *ec2.CreateInstanceEventWindowOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.CreateInstanceEventWindowOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.CreateInstanceEventWindowInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // CreateInstanceExportTask provides a mock function with given fields: _a0
 func (_m *EC2API) CreateInstanceExportTask(_a0 *ec2.CreateInstanceExportTaskInput) (*ec2.CreateInstanceExportTaskOutput, error) {
 	ret := _m.Called(_a0)
@@ -6351,6 +6585,84 @@ func (_m *EC2API) CreateSubnet(_a0 *ec2.CreateSubnetInput) (*ec2.CreateSubnetOut
 	var r1 error
 	if rf, ok := ret.Get(1).(func(*ec2.CreateSubnetInput) error); ok {
 		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CreateSubnetCidrReservation provides a mock function with given fields: _a0
+func (_m *EC2API) CreateSubnetCidrReservation(_a0 *ec2.CreateSubnetCidrReservationInput) (*ec2.CreateSubnetCidrReservationOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.CreateSubnetCidrReservationOutput
+	if rf, ok := ret.Get(0).(func(*ec2.CreateSubnetCidrReservationInput) *ec2.CreateSubnetCidrReservationOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.CreateSubnetCidrReservationOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.CreateSubnetCidrReservationInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CreateSubnetCidrReservationRequest provides a mock function with given fields: _a0
+func (_m *EC2API) CreateSubnetCidrReservationRequest(_a0 *ec2.CreateSubnetCidrReservationInput) (*request.Request, *ec2.CreateSubnetCidrReservationOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.CreateSubnetCidrReservationInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.CreateSubnetCidrReservationOutput
+	if rf, ok := ret.Get(1).(func(*ec2.CreateSubnetCidrReservationInput) *ec2.CreateSubnetCidrReservationOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.CreateSubnetCidrReservationOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// CreateSubnetCidrReservationWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) CreateSubnetCidrReservationWithContext(_a0 context.Context, _a1 *ec2.CreateSubnetCidrReservationInput, _a2 ...request.Option) (*ec2.CreateSubnetCidrReservationOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.CreateSubnetCidrReservationOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.CreateSubnetCidrReservationInput, ...request.Option) *ec2.CreateSubnetCidrReservationOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.CreateSubnetCidrReservationOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.CreateSubnetCidrReservationInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -8909,6 +9221,84 @@ func (_m *EC2API) DeleteFpgaImageWithContext(_a0 context.Context, _a1 *ec2.Delet
 	return r0, r1
 }
 
+// DeleteInstanceEventWindow provides a mock function with given fields: _a0
+func (_m *EC2API) DeleteInstanceEventWindow(_a0 *ec2.DeleteInstanceEventWindowInput) (*ec2.DeleteInstanceEventWindowOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.DeleteInstanceEventWindowOutput
+	if rf, ok := ret.Get(0).(func(*ec2.DeleteInstanceEventWindowInput) *ec2.DeleteInstanceEventWindowOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DeleteInstanceEventWindowOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.DeleteInstanceEventWindowInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DeleteInstanceEventWindowRequest provides a mock function with given fields: _a0
+func (_m *EC2API) DeleteInstanceEventWindowRequest(_a0 *ec2.DeleteInstanceEventWindowInput) (*request.Request, *ec2.DeleteInstanceEventWindowOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.DeleteInstanceEventWindowInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.DeleteInstanceEventWindowOutput
+	if rf, ok := ret.Get(1).(func(*ec2.DeleteInstanceEventWindowInput) *ec2.DeleteInstanceEventWindowOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.DeleteInstanceEventWindowOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// DeleteInstanceEventWindowWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) DeleteInstanceEventWindowWithContext(_a0 context.Context, _a1 *ec2.DeleteInstanceEventWindowInput, _a2 ...request.Option) (*ec2.DeleteInstanceEventWindowOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.DeleteInstanceEventWindowOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteInstanceEventWindowInput, ...request.Option) *ec2.DeleteInstanceEventWindowOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DeleteInstanceEventWindowOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DeleteInstanceEventWindowInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DeleteInternetGateway provides a mock function with given fields: _a0
 func (_m *EC2API) DeleteInternetGateway(_a0 *ec2.DeleteInternetGatewayInput) (*ec2.DeleteInternetGatewayOutput, error) {
 	ret := _m.Called(_a0)
@@ -10563,6 +10953,84 @@ func (_m *EC2API) DeleteSubnet(_a0 *ec2.DeleteSubnetInput) (*ec2.DeleteSubnetOut
 	var r1 error
 	if rf, ok := ret.Get(1).(func(*ec2.DeleteSubnetInput) error); ok {
 		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DeleteSubnetCidrReservation provides a mock function with given fields: _a0
+func (_m *EC2API) DeleteSubnetCidrReservation(_a0 *ec2.DeleteSubnetCidrReservationInput) (*ec2.DeleteSubnetCidrReservationOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.DeleteSubnetCidrReservationOutput
+	if rf, ok := ret.Get(0).(func(*ec2.DeleteSubnetCidrReservationInput) *ec2.DeleteSubnetCidrReservationOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DeleteSubnetCidrReservationOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.DeleteSubnetCidrReservationInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DeleteSubnetCidrReservationRequest provides a mock function with given fields: _a0
+func (_m *EC2API) DeleteSubnetCidrReservationRequest(_a0 *ec2.DeleteSubnetCidrReservationInput) (*request.Request, *ec2.DeleteSubnetCidrReservationOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.DeleteSubnetCidrReservationInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.DeleteSubnetCidrReservationOutput
+	if rf, ok := ret.Get(1).(func(*ec2.DeleteSubnetCidrReservationInput) *ec2.DeleteSubnetCidrReservationOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.DeleteSubnetCidrReservationOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// DeleteSubnetCidrReservationWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) DeleteSubnetCidrReservationWithContext(_a0 context.Context, _a1 *ec2.DeleteSubnetCidrReservationInput, _a2 ...request.Option) (*ec2.DeleteSubnetCidrReservationOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.DeleteSubnetCidrReservationOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DeleteSubnetCidrReservationInput, ...request.Option) *ec2.DeleteSubnetCidrReservationOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DeleteSubnetCidrReservationOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DeleteSubnetCidrReservationInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -17038,6 +17506,119 @@ func (_m *EC2API) DescribeInstanceEventNotificationAttributesWithContext(_a0 con
 	return r0, r1
 }
 
+// DescribeInstanceEventWindows provides a mock function with given fields: _a0
+func (_m *EC2API) DescribeInstanceEventWindows(_a0 *ec2.DescribeInstanceEventWindowsInput) (*ec2.DescribeInstanceEventWindowsOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.DescribeInstanceEventWindowsOutput
+	if rf, ok := ret.Get(0).(func(*ec2.DescribeInstanceEventWindowsInput) *ec2.DescribeInstanceEventWindowsOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeInstanceEventWindowsOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.DescribeInstanceEventWindowsInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DescribeInstanceEventWindowsPages provides a mock function with given fields: _a0, _a1
+func (_m *EC2API) DescribeInstanceEventWindowsPages(_a0 *ec2.DescribeInstanceEventWindowsInput, _a1 func(*ec2.DescribeInstanceEventWindowsOutput, bool) bool) error {
+	ret := _m.Called(_a0, _a1)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*ec2.DescribeInstanceEventWindowsInput, func(*ec2.DescribeInstanceEventWindowsOutput, bool) bool) error); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// DescribeInstanceEventWindowsPagesWithContext provides a mock function with given fields: _a0, _a1, _a2, _a3
+func (_m *EC2API) DescribeInstanceEventWindowsPagesWithContext(_a0 context.Context, _a1 *ec2.DescribeInstanceEventWindowsInput, _a2 func(*ec2.DescribeInstanceEventWindowsOutput, bool) bool, _a3 ...request.Option) error {
+	_va := make([]interface{}, len(_a3))
+	for _i := range _a3 {
+		_va[_i] = _a3[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1, _a2)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeInstanceEventWindowsInput, func(*ec2.DescribeInstanceEventWindowsOutput, bool) bool, ...request.Option) error); ok {
+		r0 = rf(_a0, _a1, _a2, _a3...)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// DescribeInstanceEventWindowsRequest provides a mock function with given fields: _a0
+func (_m *EC2API) DescribeInstanceEventWindowsRequest(_a0 *ec2.DescribeInstanceEventWindowsInput) (*request.Request, *ec2.DescribeInstanceEventWindowsOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.DescribeInstanceEventWindowsInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.DescribeInstanceEventWindowsOutput
+	if rf, ok := ret.Get(1).(func(*ec2.DescribeInstanceEventWindowsInput) *ec2.DescribeInstanceEventWindowsOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.DescribeInstanceEventWindowsOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// DescribeInstanceEventWindowsWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) DescribeInstanceEventWindowsWithContext(_a0 context.Context, _a1 *ec2.DescribeInstanceEventWindowsInput, _a2 ...request.Option) (*ec2.DescribeInstanceEventWindowsOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.DescribeInstanceEventWindowsOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeInstanceEventWindowsInput, ...request.Option) *ec2.DescribeInstanceEventWindowsOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeInstanceEventWindowsOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DescribeInstanceEventWindowsInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DescribeInstanceStatus provides a mock function with given fields: _a0
 func (_m *EC2API) DescribeInstanceStatus(_a0 *ec2.DescribeInstanceStatusInput) (*ec2.DescribeInstanceStatusOutput, error) {
 	ret := _m.Called(_a0)
@@ -21087,6 +21668,119 @@ func (_m *EC2API) DescribeSecurityGroupReferencesWithContext(_a0 context.Context
 	return r0, r1
 }
 
+// DescribeSecurityGroupRules provides a mock function with given fields: _a0
+func (_m *EC2API) DescribeSecurityGroupRules(_a0 *ec2.DescribeSecurityGroupRulesInput) (*ec2.DescribeSecurityGroupRulesOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.DescribeSecurityGroupRulesOutput
+	if rf, ok := ret.Get(0).(func(*ec2.DescribeSecurityGroupRulesInput) *ec2.DescribeSecurityGroupRulesOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeSecurityGroupRulesOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.DescribeSecurityGroupRulesInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DescribeSecurityGroupRulesPages provides a mock function with given fields: _a0, _a1
+func (_m *EC2API) DescribeSecurityGroupRulesPages(_a0 *ec2.DescribeSecurityGroupRulesInput, _a1 func(*ec2.DescribeSecurityGroupRulesOutput, bool) bool) error {
+	ret := _m.Called(_a0, _a1)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*ec2.DescribeSecurityGroupRulesInput, func(*ec2.DescribeSecurityGroupRulesOutput, bool) bool) error); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// DescribeSecurityGroupRulesPagesWithContext provides a mock function with given fields: _a0, _a1, _a2, _a3
+func (_m *EC2API) DescribeSecurityGroupRulesPagesWithContext(_a0 context.Context, _a1 *ec2.DescribeSecurityGroupRulesInput, _a2 func(*ec2.DescribeSecurityGroupRulesOutput, bool) bool, _a3 ...request.Option) error {
+	_va := make([]interface{}, len(_a3))
+	for _i := range _a3 {
+		_va[_i] = _a3[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1, _a2)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeSecurityGroupRulesInput, func(*ec2.DescribeSecurityGroupRulesOutput, bool) bool, ...request.Option) error); ok {
+		r0 = rf(_a0, _a1, _a2, _a3...)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// DescribeSecurityGroupRulesRequest provides a mock function with given fields: _a0
+func (_m *EC2API) DescribeSecurityGroupRulesRequest(_a0 *ec2.DescribeSecurityGroupRulesInput) (*request.Request, *ec2.DescribeSecurityGroupRulesOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.DescribeSecurityGroupRulesInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.DescribeSecurityGroupRulesOutput
+	if rf, ok := ret.Get(1).(func(*ec2.DescribeSecurityGroupRulesInput) *ec2.DescribeSecurityGroupRulesOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.DescribeSecurityGroupRulesOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// DescribeSecurityGroupRulesWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) DescribeSecurityGroupRulesWithContext(_a0 context.Context, _a1 *ec2.DescribeSecurityGroupRulesInput, _a2 ...request.Option) (*ec2.DescribeSecurityGroupRulesOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.DescribeSecurityGroupRulesOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeSecurityGroupRulesInput, ...request.Option) *ec2.DescribeSecurityGroupRulesOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeSecurityGroupRulesOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DescribeSecurityGroupRulesInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DescribeSecurityGroups provides a mock function with given fields: _a0
 func (_m *EC2API) DescribeSecurityGroups(_a0 *ec2.DescribeSecurityGroupsInput) (*ec2.DescribeSecurityGroupsOutput, error) {
 	ret := _m.Called(_a0)
@@ -23659,6 +24353,119 @@ func (_m *EC2API) DescribeTransitGatewaysWithContext(_a0 context.Context, _a1 *e
 	return r0, r1
 }
 
+// DescribeTrunkInterfaceAssociations provides a mock function with given fields: _a0
+func (_m *EC2API) DescribeTrunkInterfaceAssociations(_a0 *ec2.DescribeTrunkInterfaceAssociationsInput) (*ec2.DescribeTrunkInterfaceAssociationsOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.DescribeTrunkInterfaceAssociationsOutput
+	if rf, ok := ret.Get(0).(func(*ec2.DescribeTrunkInterfaceAssociationsInput) *ec2.DescribeTrunkInterfaceAssociationsOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeTrunkInterfaceAssociationsOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.DescribeTrunkInterfaceAssociationsInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DescribeTrunkInterfaceAssociationsPages provides a mock function with given fields: _a0, _a1
+func (_m *EC2API) DescribeTrunkInterfaceAssociationsPages(_a0 *ec2.DescribeTrunkInterfaceAssociationsInput, _a1 func(*ec2.DescribeTrunkInterfaceAssociationsOutput, bool) bool) error {
+	ret := _m.Called(_a0, _a1)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*ec2.DescribeTrunkInterfaceAssociationsInput, func(*ec2.DescribeTrunkInterfaceAssociationsOutput, bool) bool) error); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// DescribeTrunkInterfaceAssociationsPagesWithContext provides a mock function with given fields: _a0, _a1, _a2, _a3
+func (_m *EC2API) DescribeTrunkInterfaceAssociationsPagesWithContext(_a0 context.Context, _a1 *ec2.DescribeTrunkInterfaceAssociationsInput, _a2 func(*ec2.DescribeTrunkInterfaceAssociationsOutput, bool) bool, _a3 ...request.Option) error {
+	_va := make([]interface{}, len(_a3))
+	for _i := range _a3 {
+		_va[_i] = _a3[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1, _a2)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeTrunkInterfaceAssociationsInput, func(*ec2.DescribeTrunkInterfaceAssociationsOutput, bool) bool, ...request.Option) error); ok {
+		r0 = rf(_a0, _a1, _a2, _a3...)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// DescribeTrunkInterfaceAssociationsRequest provides a mock function with given fields: _a0
+func (_m *EC2API) DescribeTrunkInterfaceAssociationsRequest(_a0 *ec2.DescribeTrunkInterfaceAssociationsInput) (*request.Request, *ec2.DescribeTrunkInterfaceAssociationsOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.DescribeTrunkInterfaceAssociationsInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.DescribeTrunkInterfaceAssociationsOutput
+	if rf, ok := ret.Get(1).(func(*ec2.DescribeTrunkInterfaceAssociationsInput) *ec2.DescribeTrunkInterfaceAssociationsOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.DescribeTrunkInterfaceAssociationsOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// DescribeTrunkInterfaceAssociationsWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) DescribeTrunkInterfaceAssociationsWithContext(_a0 context.Context, _a1 *ec2.DescribeTrunkInterfaceAssociationsInput, _a2 ...request.Option) (*ec2.DescribeTrunkInterfaceAssociationsOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.DescribeTrunkInterfaceAssociationsOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DescribeTrunkInterfaceAssociationsInput, ...request.Option) *ec2.DescribeTrunkInterfaceAssociationsOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DescribeTrunkInterfaceAssociationsOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DescribeTrunkInterfaceAssociationsInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DescribeVolumeAttribute provides a mock function with given fields: _a0
 func (_m *EC2API) DescribeVolumeAttribute(_a0 *ec2.DescribeVolumeAttributeInput) (*ec2.DescribeVolumeAttributeOutput, error) {
 	ret := _m.Called(_a0)
@@ -25916,6 +26723,84 @@ func (_m *EC2API) DisableFastSnapshotRestoresWithContext(_a0 context.Context, _a
 	return r0, r1
 }
 
+// DisableImageDeprecation provides a mock function with given fields: _a0
+func (_m *EC2API) DisableImageDeprecation(_a0 *ec2.DisableImageDeprecationInput) (*ec2.DisableImageDeprecationOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.DisableImageDeprecationOutput
+	if rf, ok := ret.Get(0).(func(*ec2.DisableImageDeprecationInput) *ec2.DisableImageDeprecationOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DisableImageDeprecationOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.DisableImageDeprecationInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DisableImageDeprecationRequest provides a mock function with given fields: _a0
+func (_m *EC2API) DisableImageDeprecationRequest(_a0 *ec2.DisableImageDeprecationInput) (*request.Request, *ec2.DisableImageDeprecationOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.DisableImageDeprecationInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.DisableImageDeprecationOutput
+	if rf, ok := ret.Get(1).(func(*ec2.DisableImageDeprecationInput) *ec2.DisableImageDeprecationOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.DisableImageDeprecationOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// DisableImageDeprecationWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) DisableImageDeprecationWithContext(_a0 context.Context, _a1 *ec2.DisableImageDeprecationInput, _a2 ...request.Option) (*ec2.DisableImageDeprecationOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.DisableImageDeprecationOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DisableImageDeprecationInput, ...request.Option) *ec2.DisableImageDeprecationOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DisableImageDeprecationOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DisableImageDeprecationInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DisableSerialConsoleAccess provides a mock function with given fields: _a0
 func (_m *EC2API) DisableSerialConsoleAccess(_a0 *ec2.DisableSerialConsoleAccessInput) (*ec2.DisableSerialConsoleAccessOutput, error) {
 	ret := _m.Called(_a0)
@@ -26618,6 +27503,84 @@ func (_m *EC2API) DisassociateIamInstanceProfileWithContext(_a0 context.Context,
 	return r0, r1
 }
 
+// DisassociateInstanceEventWindow provides a mock function with given fields: _a0
+func (_m *EC2API) DisassociateInstanceEventWindow(_a0 *ec2.DisassociateInstanceEventWindowInput) (*ec2.DisassociateInstanceEventWindowOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.DisassociateInstanceEventWindowOutput
+	if rf, ok := ret.Get(0).(func(*ec2.DisassociateInstanceEventWindowInput) *ec2.DisassociateInstanceEventWindowOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DisassociateInstanceEventWindowOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.DisassociateInstanceEventWindowInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DisassociateInstanceEventWindowRequest provides a mock function with given fields: _a0
+func (_m *EC2API) DisassociateInstanceEventWindowRequest(_a0 *ec2.DisassociateInstanceEventWindowInput) (*request.Request, *ec2.DisassociateInstanceEventWindowOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.DisassociateInstanceEventWindowInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.DisassociateInstanceEventWindowOutput
+	if rf, ok := ret.Get(1).(func(*ec2.DisassociateInstanceEventWindowInput) *ec2.DisassociateInstanceEventWindowOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.DisassociateInstanceEventWindowOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// DisassociateInstanceEventWindowWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) DisassociateInstanceEventWindowWithContext(_a0 context.Context, _a1 *ec2.DisassociateInstanceEventWindowInput, _a2 ...request.Option) (*ec2.DisassociateInstanceEventWindowOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.DisassociateInstanceEventWindowOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DisassociateInstanceEventWindowInput, ...request.Option) *ec2.DisassociateInstanceEventWindowOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DisassociateInstanceEventWindowOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DisassociateInstanceEventWindowInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DisassociateRouteTable provides a mock function with given fields: _a0
 func (_m *EC2API) DisassociateRouteTable(_a0 *ec2.DisassociateRouteTableInput) (*ec2.DisassociateRouteTableOutput, error) {
 	ret := _m.Called(_a0)
@@ -26930,6 +27893,84 @@ func (_m *EC2API) DisassociateTransitGatewayRouteTableWithContext(_a0 context.Co
 	return r0, r1
 }
 
+// DisassociateTrunkInterface provides a mock function with given fields: _a0
+func (_m *EC2API) DisassociateTrunkInterface(_a0 *ec2.DisassociateTrunkInterfaceInput) (*ec2.DisassociateTrunkInterfaceOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.DisassociateTrunkInterfaceOutput
+	if rf, ok := ret.Get(0).(func(*ec2.DisassociateTrunkInterfaceInput) *ec2.DisassociateTrunkInterfaceOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DisassociateTrunkInterfaceOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.DisassociateTrunkInterfaceInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// DisassociateTrunkInterfaceRequest provides a mock function with given fields: _a0
+func (_m *EC2API) DisassociateTrunkInterfaceRequest(_a0 *ec2.DisassociateTrunkInterfaceInput) (*request.Request, *ec2.DisassociateTrunkInterfaceOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.DisassociateTrunkInterfaceInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.DisassociateTrunkInterfaceOutput
+	if rf, ok := ret.Get(1).(func(*ec2.DisassociateTrunkInterfaceInput) *ec2.DisassociateTrunkInterfaceOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.DisassociateTrunkInterfaceOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// DisassociateTrunkInterfaceWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) DisassociateTrunkInterfaceWithContext(_a0 context.Context, _a1 *ec2.DisassociateTrunkInterfaceInput, _a2 ...request.Option) (*ec2.DisassociateTrunkInterfaceOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.DisassociateTrunkInterfaceOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.DisassociateTrunkInterfaceInput, ...request.Option) *ec2.DisassociateTrunkInterfaceOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.DisassociateTrunkInterfaceOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.DisassociateTrunkInterfaceInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // DisassociateVpcCidrBlock provides a mock function with given fields: _a0
 func (_m *EC2API) DisassociateVpcCidrBlock(_a0 *ec2.DisassociateVpcCidrBlockInput) (*ec2.DisassociateVpcCidrBlockOutput, error) {
 	ret := _m.Called(_a0)
@@ -27156,6 +28197,84 @@ func (_m *EC2API) EnableFastSnapshotRestoresWithContext(_a0 context.Context, _a1
 
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, *ec2.EnableFastSnapshotRestoresInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// EnableImageDeprecation provides a mock function with given fields: _a0
+func (_m *EC2API) EnableImageDeprecation(_a0 *ec2.EnableImageDeprecationInput) (*ec2.EnableImageDeprecationOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.EnableImageDeprecationOutput
+	if rf, ok := ret.Get(0).(func(*ec2.EnableImageDeprecationInput) *ec2.EnableImageDeprecationOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.EnableImageDeprecationOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.EnableImageDeprecationInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// EnableImageDeprecationRequest provides a mock function with given fields: _a0
+func (_m *EC2API) EnableImageDeprecationRequest(_a0 *ec2.EnableImageDeprecationInput) (*request.Request, *ec2.EnableImageDeprecationOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.EnableImageDeprecationInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.EnableImageDeprecationOutput
+	if rf, ok := ret.Get(1).(func(*ec2.EnableImageDeprecationInput) *ec2.EnableImageDeprecationOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.EnableImageDeprecationOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// EnableImageDeprecationWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) EnableImageDeprecationWithContext(_a0 context.Context, _a1 *ec2.EnableImageDeprecationInput, _a2 ...request.Option) (*ec2.EnableImageDeprecationOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.EnableImageDeprecationOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.EnableImageDeprecationInput, ...request.Option) *ec2.EnableImageDeprecationOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.EnableImageDeprecationOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.EnableImageDeprecationInput, ...request.Option) error); ok {
 		r1 = rf(_a0, _a1, _a2...)
 	} else {
 		r1 = ret.Error(1)
@@ -29488,6 +30607,84 @@ func (_m *EC2API) GetSerialConsoleAccessStatusWithContext(_a0 context.Context, _
 	return r0, r1
 }
 
+// GetSubnetCidrReservations provides a mock function with given fields: _a0
+func (_m *EC2API) GetSubnetCidrReservations(_a0 *ec2.GetSubnetCidrReservationsInput) (*ec2.GetSubnetCidrReservationsOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.GetSubnetCidrReservationsOutput
+	if rf, ok := ret.Get(0).(func(*ec2.GetSubnetCidrReservationsInput) *ec2.GetSubnetCidrReservationsOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.GetSubnetCidrReservationsOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.GetSubnetCidrReservationsInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetSubnetCidrReservationsRequest provides a mock function with given fields: _a0
+func (_m *EC2API) GetSubnetCidrReservationsRequest(_a0 *ec2.GetSubnetCidrReservationsInput) (*request.Request, *ec2.GetSubnetCidrReservationsOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.GetSubnetCidrReservationsInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.GetSubnetCidrReservationsOutput
+	if rf, ok := ret.Get(1).(func(*ec2.GetSubnetCidrReservationsInput) *ec2.GetSubnetCidrReservationsOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.GetSubnetCidrReservationsOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// GetSubnetCidrReservationsWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) GetSubnetCidrReservationsWithContext(_a0 context.Context, _a1 *ec2.GetSubnetCidrReservationsInput, _a2 ...request.Option) (*ec2.GetSubnetCidrReservationsOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.GetSubnetCidrReservationsOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.GetSubnetCidrReservationsInput, ...request.Option) *ec2.GetSubnetCidrReservationsOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.GetSubnetCidrReservationsOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.GetSubnetCidrReservationsInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // GetTransitGatewayAttachmentPropagations provides a mock function with given fields: _a0
 func (_m *EC2API) GetTransitGatewayAttachmentPropagations(_a0 *ec2.GetTransitGatewayAttachmentPropagationsInput) (*ec2.GetTransitGatewayAttachmentPropagationsOutput, error) {
 	ret := _m.Called(_a0)
@@ -31769,6 +32966,84 @@ func (_m *EC2API) ModifyInstanceEventStartTimeWithContext(_a0 context.Context, _
 	return r0, r1
 }
 
+// ModifyInstanceEventWindow provides a mock function with given fields: _a0
+func (_m *EC2API) ModifyInstanceEventWindow(_a0 *ec2.ModifyInstanceEventWindowInput) (*ec2.ModifyInstanceEventWindowOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.ModifyInstanceEventWindowOutput
+	if rf, ok := ret.Get(0).(func(*ec2.ModifyInstanceEventWindowInput) *ec2.ModifyInstanceEventWindowOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.ModifyInstanceEventWindowOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.ModifyInstanceEventWindowInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ModifyInstanceEventWindowRequest provides a mock function with given fields: _a0
+func (_m *EC2API) ModifyInstanceEventWindowRequest(_a0 *ec2.ModifyInstanceEventWindowInput) (*request.Request, *ec2.ModifyInstanceEventWindowOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.ModifyInstanceEventWindowInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.ModifyInstanceEventWindowOutput
+	if rf, ok := ret.Get(1).(func(*ec2.ModifyInstanceEventWindowInput) *ec2.ModifyInstanceEventWindowOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.ModifyInstanceEventWindowOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// ModifyInstanceEventWindowWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) ModifyInstanceEventWindowWithContext(_a0 context.Context, _a1 *ec2.ModifyInstanceEventWindowInput, _a2 ...request.Option) (*ec2.ModifyInstanceEventWindowOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.ModifyInstanceEventWindowOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.ModifyInstanceEventWindowInput, ...request.Option) *ec2.ModifyInstanceEventWindowOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.ModifyInstanceEventWindowOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.ModifyInstanceEventWindowInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // ModifyInstanceMetadataOptions provides a mock function with given fields: _a0
 func (_m *EC2API) ModifyInstanceMetadataOptions(_a0 *ec2.ModifyInstanceMetadataOptionsInput) (*ec2.ModifyInstanceMetadataOptionsOutput, error) {
 	ret := _m.Called(_a0)
@@ -32229,6 +33504,84 @@ func (_m *EC2API) ModifyReservedInstancesWithContext(_a0 context.Context, _a1 *e
 
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, *ec2.ModifyReservedInstancesInput, ...request.Option) error); ok {
+		r1 = rf(_a0, _a1, _a2...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ModifySecurityGroupRules provides a mock function with given fields: _a0
+func (_m *EC2API) ModifySecurityGroupRules(_a0 *ec2.ModifySecurityGroupRulesInput) (*ec2.ModifySecurityGroupRulesOutput, error) {
+	ret := _m.Called(_a0)
+
+	var r0 *ec2.ModifySecurityGroupRulesOutput
+	if rf, ok := ret.Get(0).(func(*ec2.ModifySecurityGroupRulesInput) *ec2.ModifySecurityGroupRulesOutput); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.ModifySecurityGroupRulesOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(*ec2.ModifySecurityGroupRulesInput) error); ok {
+		r1 = rf(_a0)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ModifySecurityGroupRulesRequest provides a mock function with given fields: _a0
+func (_m *EC2API) ModifySecurityGroupRulesRequest(_a0 *ec2.ModifySecurityGroupRulesInput) (*request.Request, *ec2.ModifySecurityGroupRulesOutput) {
+	ret := _m.Called(_a0)
+
+	var r0 *request.Request
+	if rf, ok := ret.Get(0).(func(*ec2.ModifySecurityGroupRulesInput) *request.Request); ok {
+		r0 = rf(_a0)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*request.Request)
+		}
+	}
+
+	var r1 *ec2.ModifySecurityGroupRulesOutput
+	if rf, ok := ret.Get(1).(func(*ec2.ModifySecurityGroupRulesInput) *ec2.ModifySecurityGroupRulesOutput); ok {
+		r1 = rf(_a0)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*ec2.ModifySecurityGroupRulesOutput)
+		}
+	}
+
+	return r0, r1
+}
+
+// ModifySecurityGroupRulesWithContext provides a mock function with given fields: _a0, _a1, _a2
+func (_m *EC2API) ModifySecurityGroupRulesWithContext(_a0 context.Context, _a1 *ec2.ModifySecurityGroupRulesInput, _a2 ...request.Option) (*ec2.ModifySecurityGroupRulesOutput, error) {
+	_va := make([]interface{}, len(_a2))
+	for _i := range _a2 {
+		_va[_i] = _a2[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, _a0, _a1)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	var r0 *ec2.ModifySecurityGroupRulesOutput
+	if rf, ok := ret.Get(0).(func(context.Context, *ec2.ModifySecurityGroupRulesInput, ...request.Option) *ec2.ModifySecurityGroupRulesOutput); ok {
+		r0 = rf(_a0, _a1, _a2...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ec2.ModifySecurityGroupRulesOutput)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, *ec2.ModifySecurityGroupRulesInput, ...request.Option) error); ok {
 		r1 = rf(_a0, _a1, _a2...)
 	} else {
 		r1 = ret.Error(1)

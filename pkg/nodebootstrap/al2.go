@@ -11,29 +11,25 @@ const (
 )
 
 type AmazonLinux2 struct {
-	clusterName string
-	ng          *api.NodeGroup
+	clusterConfig *api.ClusterConfig
+	ng            *api.NodeGroup
 }
 
-func NewAL2Bootstrapper(clusterName string, ng *api.NodeGroup) *AmazonLinux2 {
+func NewAL2Bootstrapper(clusterConfig *api.ClusterConfig, ng *api.NodeGroup) *AmazonLinux2 {
 	return &AmazonLinux2{
-		clusterName: clusterName,
-		ng:          ng,
+		clusterConfig: clusterConfig,
+		ng:            ng,
 	}
 }
 
 func (b *AmazonLinux2) UserData() (string, error) {
 	var scripts []string
 
-	if api.IsEnabled(b.ng.SSH.EnableSSM) {
-		scripts = append(scripts, "install-ssm.al2.sh")
-	}
-
 	if api.IsEnabled(b.ng.EFAEnabled) {
 		scripts = append(scripts, "efa.al2.sh")
 	}
 
-	body, err := linuxConfig(al2BootScript, b.clusterName, b.ng, scripts...)
+	body, err := linuxConfig(b.clusterConfig, al2BootScript, b.ng, scripts...)
 	if err != nil {
 		return "", errors.Wrap(err, "encoding user data")
 	}

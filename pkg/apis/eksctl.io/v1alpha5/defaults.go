@@ -7,6 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/aws/aws-sdk-go/aws"
+
 	"github.com/weaveworks/eksctl/pkg/git"
 )
 
@@ -109,9 +110,7 @@ func SetNodeGroupDefaults(ng *NodeGroup, meta *ClusterMeta) {
 		ng.SecurityGroups.WithShared = Enabled()
 	}
 
-	if ng.AMIFamily == NodeImageFamilyBottlerocket {
-		setBottlerocketNodeGroupDefaults(ng)
-	}
+	setContainerRuntimeDefault(ng)
 }
 
 // SetManagedNodeGroupDefaults sets default values for a ManagedNodeGroup
@@ -167,6 +166,9 @@ func setNodeGroupBaseDefaults(ng *NodeGroupBase, meta *ClusterMeta) {
 	if ng.InstanceSelector == nil {
 		ng.InstanceSelector = &InstanceSelector{}
 	}
+	if ng.AMIFamily == NodeImageFamilyBottlerocket {
+		setBottlerocketNodeGroupDefaults(ng)
+	}
 }
 
 func setVolumeDefaults(ng *NodeGroupBase, template *LaunchTemplate) {
@@ -186,6 +188,12 @@ func setVolumeDefaults(ng *NodeGroupBase, template *LaunchTemplate) {
 	}
 	if *ng.VolumeType == NodeVolumeTypeIO1 && ng.VolumeIOPS == nil {
 		ng.VolumeIOPS = aws.Int(DefaultNodeVolumeIO1IOPS)
+	}
+}
+
+func setContainerRuntimeDefault(ng *NodeGroup) {
+	if ng.ContainerRuntime == nil {
+		ng.ContainerRuntime = &DefaultContainerRuntime
 	}
 }
 
@@ -246,16 +254,10 @@ func setDefaultNodeLabels(labels map[string]string, clusterName, nodeGroupName s
 	labels[NodeGroupNameLabel] = nodeGroupName
 }
 
-func setBottlerocketNodeGroupDefaults(ng *NodeGroup) {
+func setBottlerocketNodeGroupDefaults(ng *NodeGroupBase) {
 	// Initialize config object if not present.
 	if ng.Bottlerocket == nil {
 		ng.Bottlerocket = &NodeGroupBottlerocket{}
-	}
-
-	// Default to resolving Bottlerocket images using SSM if not specified by
-	// the user.
-	if ng.AMI == "" {
-		ng.AMI = NodeImageResolverAutoSSM
 	}
 
 	// Use the SSH settings if the user hasn't explicitly configured the Admin
@@ -354,25 +356,5 @@ func SetDefaultGitSettings(c *ClusterConfig) {
 			}
 			profile.OutputPath = "./" + repoName
 		}
-	}
-}
-
-// SetDefaultGitOpsSettings sets the default values for the gitops repo and operator settings
-func SetDefaultGitOpsSettings(c *ClusterConfig) {
-	if c.GitOps == nil {
-		return
-	}
-
-	if c.GitOps.Flux != nil {
-		fluxCfg := c.GitOps.Flux
-		if fluxCfg.Namespace == "" {
-			fluxCfg.Namespace = "flux-system"
-		}
-
-		if fluxCfg.Path == "" {
-			fluxCfg.Path = "clusters/" + c.Metadata.Name
-		}
-
-		return
 	}
 }

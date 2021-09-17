@@ -154,7 +154,6 @@ var _ = Describe("ClusterConfig validation", func() {
 			SetNodeGroupDefaults(&testNodeGroup, &ClusterMeta{})
 
 			Expect(testNodeGroup.Bottlerocket).ToNot(BeNil())
-			Expect(testNodeGroup.AMI).To(Equal(NodeImageResolverAutoSSM))
 			Expect(*testNodeGroup.Bottlerocket.EnableAdminContainer).To(BeFalse())
 		})
 	})
@@ -169,6 +168,16 @@ var _ = Describe("ClusterConfig validation", func() {
 
 		})
 
+	})
+
+	Context("Container Runtime settings", func() {
+		It("defaults to dockerd as a container runtime", func() {
+			testNodeGroup := NodeGroup{
+				NodeGroupBase: &NodeGroupBase{},
+			}
+			SetNodeGroupDefaults(&testNodeGroup, &ClusterMeta{})
+			Expect(*testNodeGroup.ContainerRuntime).To(Equal(DefaultContainerRuntime))
+		})
 	})
 
 	Describe("Cluster Managed Shared Node Security Group settings", func() {

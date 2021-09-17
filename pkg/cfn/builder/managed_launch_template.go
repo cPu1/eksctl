@@ -5,7 +5,6 @@ import (
 
 	"github.com/pkg/errors"
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
-	"github.com/weaveworks/eksctl/pkg/nodebootstrap"
 	"github.com/weaveworks/goformation/v4/cloudformation/cloudformation"
 	gfnec2 "github.com/weaveworks/goformation/v4/cloudformation/ec2"
 	gfnt "github.com/weaveworks/goformation/v4/cloudformation/types"
@@ -18,7 +17,7 @@ func (m *ManagedNodeGroupResourceSet) makeLaunchTemplateData() (*gfnec2.LaunchTe
 		MetadataOptions:   makeMetadataOptions(mng.NodeGroupBase),
 	}
 
-	userData, err := nodebootstrap.MakeManagedUserData(mng, m.UserDataMimeBoundary)
+	userData, err := m.bootstrapper.UserData()
 	if err != nil {
 		return nil, err
 	}
@@ -75,44 +74,13 @@ func (m *ManagedNodeGroupResourceSet) makeLaunchTemplateData() (*gfnec2.LaunchTe
 		launchTemplateData.EbsOptimized = gfnt.NewBoolean(*mng.EBSOptimized)
 	}
 
-	if volumeSize := mng.VolumeSize; volumeSize != nil && *volumeSize > 0 {
-		mapping := gfnec2.LaunchTemplate_BlockDeviceMapping{
-			Ebs: &gfnec2.LaunchTemplate_Ebs{
-				VolumeSize: gfnt.NewInteger(*volumeSize),
-				VolumeType: gfnt.NewString(*mng.VolumeType),
-			},
-		}
-		if mng.VolumeEncrypted != nil {
-			mapping.Ebs.Encrypted = gfnt.NewBoolean(*mng.VolumeEncrypted)
-		}
-		if api.IsSetAndNonEmptyString(mng.VolumeKmsKeyID) {
-			mapping.Ebs.KmsKeyId = gfnt.NewString(*mng.VolumeKmsKeyID)
-		}
-
-		if *mng.VolumeType == api.NodeVolumeTypeIO1 || *mng.VolumeType == api.NodeVolumeTypeGP3 {
-			if mng.VolumeIOPS != nil {
-				mapping.Ebs.Iops = gfnt.NewInteger(*mng.VolumeIOPS)
-			}
-		}
-
-		if *mng.VolumeType == api.NodeVolumeTypeGP3 && mng.VolumeThroughput != nil {
-			mapping.Ebs.Throughput = gfnt.NewInteger(*mng.VolumeThroughput)
-		}
-
-		if mng.VolumeName != nil {
-			mapping.DeviceName = gfnt.NewString(*mng.VolumeName)
-		} else {
-			mapping.DeviceName = gfnt.NewString("/dev/xvda")
-		}
-
-		launchTemplateData.BlockDeviceMappings = []gfnec2.LaunchTemplate_BlockDeviceMapping{mapping}
-	}
-
 	if mng.Placement != nil {
 		launchTemplateData.Placement = &gfnec2.LaunchTemplate_Placement{
 			GroupName: gfnt.NewString(mng.Placement.GroupName),
 		}
 	}
+
+	launchTemplateData.BlockDeviceMappings = makeBlockDeviceMappings(mng.NodeGroupBase)
 
 	return launchTemplateData, nil
 }
@@ -183,6 +151,9 @@ func makeTags(ng *api.NodeGroupBase, meta *api.ClusterMeta) []gfnec2.LaunchTempl
 			Tags:         cfnTags,
 		}, gfnec2.LaunchTemplate_TagSpecification{
 			ResourceType: gfnt.NewString("volume"),
+			Tags:         cfnTags,
+		}, gfnec2.LaunchTemplate_TagSpecification{
+			ResourceType: gfnt.NewString("network-interface"),
 			Tags:         cfnTags,
 		})
 

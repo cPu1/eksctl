@@ -7,13 +7,15 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/aws/aws-sdk-go/service/eks"
 	"github.com/pkg/errors"
-	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
-	"github.com/weaveworks/eksctl/pkg/utils"
-	"github.com/weaveworks/eksctl/pkg/vpc"
 	gfnec2 "github.com/weaveworks/goformation/v4/cloudformation/ec2"
 	gfneks "github.com/weaveworks/goformation/v4/cloudformation/eks"
 	gfnt "github.com/weaveworks/goformation/v4/cloudformation/types"
 	corev1 "k8s.io/api/core/v1"
+
+	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
+	"github.com/weaveworks/eksctl/pkg/nodebootstrap"
+	"github.com/weaveworks/eksctl/pkg/utils"
+	"github.com/weaveworks/eksctl/pkg/vpc"
 )
 
 // ManagedNodeGroupResourceSet defines the CloudFormation resources required for a managed nodegroup
@@ -24,16 +26,14 @@ type ManagedNodeGroupResourceSet struct {
 	launchTemplateFetcher *LaunchTemplateFetcher
 	ec2API                ec2iface.EC2API
 	vpcImporter           vpc.Importer
+	bootstrapper          nodebootstrap.Bootstrapper
 	*resourceSet
-
-	// UserDataMimeBoundary sets the MIME boundary for user data
-	UserDataMimeBoundary string
 }
 
 const ManagedNodeGroupResourceName = "ManagedNodeGroup"
 
 // NewManagedNodeGroup creates a new ManagedNodeGroupResourceSet
-func NewManagedNodeGroup(ec2API ec2iface.EC2API, cluster *api.ClusterConfig, nodeGroup *api.ManagedNodeGroup, launchTemplateFetcher *LaunchTemplateFetcher, forceAddCNIPolicy bool, vpcImporter vpc.Importer) *ManagedNodeGroupResourceSet {
+func NewManagedNodeGroup(ec2API ec2iface.EC2API, cluster *api.ClusterConfig, nodeGroup *api.ManagedNodeGroup, launchTemplateFetcher *LaunchTemplateFetcher, bootstrapper nodebootstrap.Bootstrapper, forceAddCNIPolicy bool, vpcImporter vpc.Importer) *ManagedNodeGroupResourceSet {
 	return &ManagedNodeGroupResourceSet{
 		clusterConfig:         cluster,
 		forceAddCNIPolicy:     forceAddCNIPolicy,
@@ -42,6 +42,7 @@ func NewManagedNodeGroup(ec2API ec2iface.EC2API, cluster *api.ClusterConfig, nod
 		ec2API:                ec2API,
 		resourceSet:           newResourceSet(),
 		vpcImporter:           vpcImporter,
+		bootstrapper:          bootstrapper,
 	}
 }
 
@@ -57,9 +58,7 @@ func (m *ManagedNodeGroupResourceSet) AddAllResources() error {
 
 	var nodeRole *gfnt.Value
 	if m.nodeGroup.IAM.InstanceRoleARN == "" {
-		enableSSM := m.nodeGroup.SSH != nil && api.IsEnabled(m.nodeGroup.SSH.EnableSSM)
-
-		if err := createRole(m.resourceSet, m.clusterConfig.IAM, m.nodeGroup.IAM, true, enableSSM, m.forceAddCNIPolicy); err != nil {
+		if err := createRole(m.resourceSet, m.clusterConfig.IAM, m.nodeGroup.IAM, true, m.forceAddCNIPolicy); err != nil {
 			return err
 		}
 		nodeRole = gfnt.MakeFnGetAttString(cfnIAMInstanceRoleName, "Arn")
@@ -67,7 +66,7 @@ func (m *ManagedNodeGroupResourceSet) AddAllResources() error {
 		nodeRole = gfnt.NewString(NormalizeARN(m.nodeGroup.IAM.InstanceRoleARN))
 	}
 
-	subnets, err := AssignSubnets(m.nodeGroup.NodeGroupBase, m.vpcImporter, m.clusterConfig)
+	subnets, err := AssignSubnets(m.nodeGroup.NodeGroupBase, m.vpcImporter, m.clusterConfig, m.ec2API)
 	if err != nil {
 		return err
 	}
@@ -93,6 +92,7 @@ func (m *ManagedNodeGroupResourceSet) AddAllResources() error {
 	if err != nil {
 		return err
 	}
+
 	managedResource := &gfneks.Nodegroup{
 		ClusterName:   gfnt.NewString(m.clusterConfig.Metadata.Name),
 		NodegroupName: gfnt.NewString(m.nodeGroup.Name),
@@ -102,6 +102,17 @@ func (m *ManagedNodeGroupResourceSet) AddAllResources() error {
 		Labels:        m.nodeGroup.Labels,
 		Tags:          m.nodeGroup.Tags,
 		Taints:        taints,
+	}
+
+	if m.nodeGroup.UpdateConfig != nil {
+		updateConfig := &gfneks.Nodegroup_UpdateConfig{}
+		if m.nodeGroup.UpdateConfig.MaxUnavailable != nil {
+			updateConfig.MaxUnavailable = gfnt.NewInteger(*m.nodeGroup.UpdateConfig.MaxUnavailable)
+		}
+		if m.nodeGroup.UpdateConfig.MaxUnavailablePercentage != nil {
+			updateConfig.MaxUnavailablePercentage = gfnt.NewInteger(*m.nodeGroup.UpdateConfig.MaxUnavailablePercentage)
+		}
+		managedResource.UpdateConfig = updateConfig
 	}
 
 	if m.nodeGroup.Spot {

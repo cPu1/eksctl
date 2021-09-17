@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
+	"github.com/weaveworks/eksctl/pkg/nodebootstrap"
+	"github.com/weaveworks/eksctl/pkg/nodebootstrap/fakes"
 	"github.com/weaveworks/eksctl/pkg/testutils/mockprovider"
 	vpcfakes "github.com/weaveworks/eksctl/pkg/vpc/fakes"
 	"github.com/weaveworks/goformation/v4"
@@ -21,7 +23,7 @@ func TestManagedPolicyResources(t *testing.T) {
 		description             string
 	}{
 		{
-			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy", "AmazonEC2ContainerRegistryReadOnly"),
+			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy", "AmazonEC2ContainerRegistryReadOnly", "AmazonSSMManagedInstanceCore"),
 			description:             "Default policies",
 		},
 		{
@@ -29,7 +31,7 @@ func TestManagedPolicyResources(t *testing.T) {
 				ImageBuilder: api.Enabled(),
 			},
 			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy",
-				"AmazonEC2ContainerRegistryReadOnly", "AmazonEC2ContainerRegistryPowerUser"),
+				"AmazonEC2ContainerRegistryReadOnly", "AmazonEC2ContainerRegistryPowerUser", "AmazonSSMManagedInstanceCore"),
 			description: "ImageBuilder enabled",
 		},
 		{
@@ -37,7 +39,7 @@ func TestManagedPolicyResources(t *testing.T) {
 				CloudWatch: api.Enabled(),
 			},
 			expectedManagedPolicies: makePartitionedPolicies("AmazonEKSWorkerNodePolicy", "AmazonEKS_CNI_Policy",
-				"AmazonEC2ContainerRegistryReadOnly", "CloudWatchAgentServerPolicy"),
+				"AmazonEC2ContainerRegistryReadOnly", "AmazonSSMManagedInstanceCore", "CloudWatchAgentServerPolicy"),
 			description: "CloudWatch enabled",
 		},
 		{
@@ -77,12 +79,17 @@ func TestManagedPolicyResources(t *testing.T) {
 			clusterConfig := api.NewClusterConfig()
 
 			ng := api.NewManagedNodeGroup()
+			api.SetManagedNodeGroupDefaults(ng, clusterConfig.Metadata)
 			ng.IAM.WithAddonPolicies = tt.addons
 			ng.IAM.AttachPolicyARNs = prefixPolicies(tt.attachPolicyARNs...)
 
 			p := mockprovider.NewMockProvider()
 			fakeVPCImporter := new(vpcfakes.FakeImporter)
-			stack := NewManagedNodeGroup(p.EC2(), clusterConfig, ng, nil, false, fakeVPCImporter)
+			bootstrapper := &fakes.FakeBootstrapper{}
+			bootstrapper.UserDataStub = func() (string, error) {
+				return "", nil
+			}
+			stack := NewManagedNodeGroup(p.EC2(), clusterConfig, ng, nil, bootstrapper, false, fakeVPCImporter)
 			err := stack.AddAllResources()
 			require.Nil(err)
 
@@ -150,7 +157,8 @@ func TestManagedNodeRole(t *testing.T) {
 			api.SetManagedNodeGroupDefaults(tt.nodeGroup, clusterConfig.Metadata)
 			p := mockprovider.NewMockProvider()
 			fakeVPCImporter := new(vpcfakes.FakeImporter)
-			stack := NewManagedNodeGroup(p.EC2(), clusterConfig, tt.nodeGroup, nil, false, fakeVPCImporter)
+			bootstrapper := nodebootstrap.NewManagedBootstrapper(clusterConfig, tt.nodeGroup)
+			stack := NewManagedNodeGroup(p.EC2(), clusterConfig, tt.nodeGroup, nil, bootstrapper, false, fakeVPCImporter)
 			err := stack.AddAllResources()
 			require.NoError(err)
 

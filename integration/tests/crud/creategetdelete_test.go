@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package crud
@@ -19,6 +20,8 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/aws/aws-sdk-go/aws"
+	awsec2 "github.com/aws/aws-sdk-go/service/ec2"
 	awseks "github.com/aws/aws-sdk-go/service/eks"
 	harness "github.com/dlespiau/kube-test-harness"
 	. "github.com/onsi/ginkgo"
@@ -62,6 +65,13 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 	)
 
 	commonTimeout := 10 * time.Minute
+	makeClusterConfig := func() *api.ClusterConfig {
+		clusterConfig := api.NewClusterConfig()
+		clusterConfig.Metadata.Name = params.ClusterName
+		clusterConfig.Metadata.Region = params.Region
+		clusterConfig.Metadata.Version = params.Version
+		return clusterConfig
+	}
 
 	BeforeSuite(func() {
 		params.KubeconfigTemp = false
@@ -100,6 +110,7 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 			"--nodes", "1",
 			"--version", params.Version,
 			"--kubeconfig", params.KubeconfigPath,
+			"--zones", "us-west-2b,us-west-2c",
 		)
 		Expect(cmd).To(RunSuccessfully())
 	})
@@ -206,9 +217,9 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 			})
 		})
 
-		Context("and create a new nodegroup with taints", func() {
-			It("should support both formats for taints", func() {
-				data, err := os.ReadFile("testdata/taints.yaml")
+		Context("and create a new nodegroup with taints and maxPods", func() {
+			It("should have taints and maxPods set", func() {
+				data, err := os.ReadFile("testdata/taints-max-pods.yaml")
 				Expect(err).ToNot(HaveOccurred())
 				clusterConfig, err := eks.ParseConfig(data)
 				Expect(err).ToNot(HaveOccurred())
@@ -217,6 +228,7 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 
 				data, err = json.Marshal(clusterConfig)
 				Expect(err).ToNot(HaveOccurred())
+				By("creating a new nodegroup with taints and maxPods set")
 				cmd := params.EksctlCreateCmd.
 					WithArgs(
 						"nodegroup",
@@ -232,7 +244,13 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 				clientset, err := kubernetes.NewForConfig(config)
 				Expect(err).ToNot(HaveOccurred())
 
-				tests.AssertNodeTaints(clientset, "n1", []corev1.Taint{
+				By("asserting that both formats for taints are supported")
+				var (
+					nodeListN1 = tests.ListNodes(clientset, "n1")
+					nodeListN2 = tests.ListNodes(clientset, "n2")
+				)
+
+				tests.AssertNodeTaints(nodeListN1, []corev1.Taint{
 					{
 						Key:    "key1",
 						Value:  "val1",
@@ -244,7 +262,7 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 					},
 				})
 
-				tests.AssertNodeTaints(clientset, "n2", []corev1.Taint{
+				tests.AssertNodeTaints(nodeListN2, []corev1.Taint{
 					{
 						Key:    "key1",
 						Value:  "value1",
@@ -256,6 +274,166 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 					},
 				})
 
+				By("asserting that maxPods is set correctly")
+				expectedMaxPods := 123
+				for _, node := range nodeListN1.Items {
+					maxPods, _ := node.Status.Allocatable.Pods().AsInt64()
+					Expect(maxPods).To(Equal(int64(expectedMaxPods)))
+				}
+
+			})
+		})
+
+		Context("can add a nodegroup into a new subnet", func() {
+			var (
+				subnet        *awsec2.Subnet
+				nodegroupName string
+			)
+			BeforeEach(func() {
+				nodegroupName = "test-extra-nodegroup"
+			})
+			AfterEach(func() {
+				cmd := params.EksctlDeleteCmd.WithArgs(
+					"nodegroup",
+					"--verbose", "4",
+					"--cluster", params.ClusterName,
+					"--wait",
+					nodegroupName,
+				)
+				Expect(cmd).To(RunSuccessfully())
+				awsSession := NewSession(params.Region)
+				ec2 := awsec2.New(awsSession)
+				output, err := ec2.DeleteSubnet(&awsec2.DeleteSubnetInput{
+					SubnetId: subnet.SubnetId,
+				})
+				Expect(err).NotTo(HaveOccurred(), output.GoString())
+
+			})
+			It("creates a new nodegroup", func() {
+				cfg := &api.ClusterConfig{
+					Metadata: &api.ClusterMeta{
+						Name:   params.ClusterName,
+						Region: params.Region,
+					},
+				}
+				ctl, err := eks.New(&api.ProviderConfig{Region: params.Region}, cfg)
+				Expect(err).NotTo(HaveOccurred())
+				cl, err := ctl.GetCluster(params.ClusterName)
+				Expect(err).NotTo(HaveOccurred())
+				awsSession := NewSession(params.Region)
+				ec2 := awsec2.New(awsSession)
+				existingSubnets, err := ec2.DescribeSubnets(&awsec2.DescribeSubnetsInput{
+					SubnetIds: cl.ResourcesVpcConfig.SubnetIds,
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(len(existingSubnets.Subnets) > 0).To(BeTrue())
+				s := existingSubnets.Subnets[0]
+
+				cidr := *s.CidrBlock
+				var (
+					i1, i2, i3, i4, ic int
+				)
+				fmt.Sscanf(cidr, "%d.%d.%d.%d/%d", &i1, &i2, &i3, &i4, &ic)
+				cidr = fmt.Sprintf("%d.%d.%s.%d/%d", i1, i2, "255", i4, ic)
+
+				var tags []*awsec2.Tag
+
+				// filter aws: tags
+				for _, t := range s.Tags {
+					if !strings.HasPrefix(*t.Key, "aws:") {
+						tags = append(tags, t)
+					}
+				}
+				output, err := ec2.CreateSubnet(&awsec2.CreateSubnetInput{
+					AvailabilityZone: aws.String("us-west-2a"),
+					CidrBlock:        aws.String(cidr),
+					TagSpecifications: []*awsec2.TagSpecification{
+						{
+							ResourceType: aws.String(awsec2.ResourceTypeSubnet),
+							Tags:         tags,
+						},
+					},
+					VpcId: s.VpcId,
+				})
+				Expect(err).NotTo(HaveOccurred())
+				moutput, err := ec2.ModifySubnetAttribute(&awsec2.ModifySubnetAttributeInput{
+					MapPublicIpOnLaunch: &awsec2.AttributeBooleanValue{
+						Value: aws.Bool(true),
+					},
+					SubnetId: output.Subnet.SubnetId,
+				})
+				Expect(err).NotTo(HaveOccurred(), moutput.GoString())
+				subnet = output.Subnet
+
+				routeTables, err := ec2.DescribeRouteTables(&awsec2.DescribeRouteTablesInput{
+					Filters: []*awsec2.Filter{
+						{
+							Name:   aws.String("association.subnet-id"),
+							Values: aws.StringSlice([]string{*s.SubnetId}),
+						},
+					},
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(len(routeTables.RouteTables) > 0).To(BeTrue(), fmt.Sprintf("route table ended up being empty: %+v", routeTables))
+				routput, err := ec2.AssociateRouteTable(&awsec2.AssociateRouteTableInput{
+					RouteTableId: routeTables.RouteTables[0].RouteTableId,
+					SubnetId:     subnet.SubnetId,
+				})
+				Expect(err).NotTo(HaveOccurred(), routput)
+
+				// create a new subnet in that given vpc and zone.
+				cmd := params.EksctlCreateCmd.WithArgs(
+					"nodegroup",
+					"--timeout=45m",
+					"--cluster", params.ClusterName,
+					"--nodes", "1",
+					"--node-type", "p2.xlarge",
+					"--subnet-ids", *subnet.SubnetId,
+					nodegroupName,
+				)
+				Expect(cmd).To(RunSuccessfully())
+			})
+		})
+
+		Context("and creating a nodegroup with containerd runtime", func() {
+			var (
+				nodegroupName string
+			)
+			BeforeEach(func() {
+				nodegroupName = "test-containerd"
+			})
+			AfterEach(func() {
+				cmd := params.EksctlDeleteCmd.WithArgs(
+					"nodegroup",
+					"--verbose", "4",
+					"--cluster", params.ClusterName,
+					"--wait",
+					nodegroupName,
+				)
+				Expect(cmd).To(RunSuccessfully())
+			})
+			It("should create the nodegroup without problems", func() {
+				clusterConfig := makeClusterConfig()
+				clusterConfig.NodeGroups = []*api.NodeGroup{
+					{
+						NodeGroupBase: &api.NodeGroupBase{
+							Name:         "test-containerd",
+							AMIFamily:    api.NodeImageFamilyAmazonLinux2,
+							InstanceType: "p2.xlarge",
+						},
+						ContainerRuntime: aws.String(api.ContainerRuntimeContainerD),
+					},
+				}
+
+				cmd := params.EksctlCreateCmd.
+					WithArgs(
+						"nodegroup",
+						"--config-file", "-",
+						"--verbose", "4",
+					).
+					WithoutArg("--region", params.Region).
+					WithStdin(testutils.ClusterConfigReader(clusterConfig))
+				Expect(cmd).To(RunSuccessfully())
 			})
 		})
 
@@ -268,6 +446,7 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 					"--nodes", "1",
 					"--node-type", "p2.xlarge",
 					"--node-private-networking",
+					"--node-zones", "us-west-2b,us-west-2c",
 					testNG,
 				)
 				Expect(cmd).To(RunSuccessfully())
@@ -285,6 +464,7 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 					ContainElement(initNG),
 					Not(ContainElement(testNG)),
 				)))
+				Expect(cmd).To(RunSuccessfullyWithOutputString(ContainSubstring(params.Version)))
 
 				cmd = params.EksctlGetCmd.WithArgs(
 					"nodegroup",
@@ -297,6 +477,7 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 					ContainElement(testNG),
 					Not(ContainElement(initNG)),
 				)))
+				Expect(cmd).To(RunSuccessfullyWithOutputString(ContainSubstring(params.Version)))
 
 				cmd = params.EksctlGetCmd.WithArgs(
 					"nodegroup",
@@ -304,10 +485,13 @@ var _ = Describe("(Integration) Create, Get, Scale & Delete", func() {
 					"--cluster", params.ClusterName,
 				)
 				Expect(cmd).To(RunSuccessfullyWithOutputString(BeNodeGroupsWithNamesWhich(
-					HaveLen(3),
+					HaveLen(4),
 					ContainElement(initNG),
 					ContainElement(testNG),
+					ContainElement("n1"),
+					ContainElement("n2"),
 				)))
+				Expect(cmd).To(RunSuccessfullyWithOutputString(ContainSubstring(params.Version)))
 			})
 
 			Context("toggle CloudWatch logging", func() {

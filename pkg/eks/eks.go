@@ -2,16 +2,15 @@ package eks
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"regexp"
 	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/weaveworks/eksctl/pkg/cfn/waiter"
-
 	"github.com/weaveworks/eksctl/pkg/cfn/manager"
+	"github.com/weaveworks/eksctl/pkg/cfn/waiter"
+	"github.com/weaveworks/eksctl/pkg/version"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/arn"
@@ -60,6 +59,11 @@ func (c *ClusterProvider) RefreshClusterStatus(spec *api.ClusterConfig) error {
 	}
 	logger.Debug("cluster = %#v", cluster)
 
+	if isNonEKSCluster(cluster) {
+		return errors.Errorf("cannot perform this operation on a non-EKS cluster; please follow the documentation for "+
+			"cluster %s's Kubernetes provider", spec.Metadata.Name)
+	}
+
 	if spec.Status == nil {
 		spec.Status = &api.ClusterStatus{}
 	}
@@ -70,14 +74,7 @@ func (c *ClusterProvider) RefreshClusterStatus(spec *api.ClusterConfig) error {
 	case awseks.ClusterStatusCreating, awseks.ClusterStatusDeleting, awseks.ClusterStatusFailed:
 		return nil
 	default:
-		data, err := base64.StdEncoding.DecodeString(*cluster.CertificateAuthority.Data)
-		if err != nil {
-			return errors.Wrap(err, "decoding certificate authority data")
-		}
-		spec.Status.Endpoint = *cluster.Endpoint
-		spec.Status.CertificateAuthorityData = data
-		spec.Status.ARN = *cluster.Arn
-		return nil
+		return spec.SetClusterStatus(cluster)
 	}
 }
 
@@ -89,6 +86,11 @@ func (c *ClusterProvider) SupportsManagedNodes(clusterConfig *api.ClusterConfig)
 	}
 
 	return ClusterSupportsManagedNodes(c.Status.ClusterInfo.Cluster)
+}
+
+// isNonEKSCluster returns true if the cluster is external
+func isNonEKSCluster(cluster *awseks.Cluster) bool {
+	return cluster.ConnectorConfig != nil
 }
 
 // ClusterSupportsManagedNodes reports whether the EKS cluster supports managed nodes
@@ -198,7 +200,7 @@ func (c *ClusterProvider) CanDelete(spec *api.ClusterConfig) (bool, error) {
 	return true, nil
 }
 
-// CanOperate return true when a cluster can be operated, otherwise it returns false along with an error explaining the reason
+// CanOperate returns true when a cluster can be operated, otherwise it returns false along with an error explaining the reason
 func (c *ClusterProvider) CanOperate(spec *api.ClusterConfig) (bool, error) {
 	err := c.maybeRefreshClusterStatus(spec)
 	if err != nil {
@@ -274,7 +276,16 @@ func (c *ClusterProvider) NewOpenIDConnectManager(spec *api.ClusterConfig) (*iam
 		return nil, fmt.Errorf("unknown EKS ARN: %q", spec.Status.ARN)
 	}
 
-	return iamoidc.NewOpenIDConnectManager(c.Provider.IAM(), parsedARN.AccountID, *c.Status.ClusterInfo.Cluster.Identity.Oidc.Issuer, parsedARN.Partition)
+	return iamoidc.NewOpenIDConnectManager(c.Provider.IAM(), parsedARN.AccountID,
+		*c.Status.ClusterInfo.Cluster.Identity.Oidc.Issuer, parsedARN.Partition, sharedTags(c.Status.ClusterInfo.Cluster))
+}
+
+func sharedTags(cluster *awseks.Cluster) map[string]string {
+	return map[string]string{
+		api.ClusterNameTag:   *cluster.Name,
+		api.EksctlVersionTag: version.GetVersion(),
+	}
+
 }
 
 // LoadClusterIntoSpecFromStack uses stack information to load the cluster
@@ -432,7 +443,10 @@ func (c *ClusterProvider) GetCluster(clusterName string) (*awseks.Cluster, error
 }
 
 func (c *ClusterProvider) getClustersRequest(chunkSize int64, nextToken string) ([]*string, *string, error) {
-	input := &awseks.ListClustersInput{MaxResults: &chunkSize}
+	input := &awseks.ListClustersInput{
+		MaxResults: &chunkSize,
+		Include:    aws.StringSlice([]string{"all"}),
+	}
 	if nextToken != "" {
 		input = input.SetNextToken(nextToken)
 	}
@@ -445,14 +459,15 @@ func (c *ClusterProvider) getClustersRequest(chunkSize int64, nextToken string) 
 
 // WaitForControlPlane waits till the control plane is ready
 func (c *ClusterProvider) WaitForControlPlane(meta *api.ClusterMeta, clientSet *kubernetes.Clientset) error {
-	if _, err := clientSet.ServerVersion(); err == nil {
-		return nil
-	}
-
+	successCount := 0
 	operation := func() (bool, error) {
 		_, err := clientSet.ServerVersion()
 		if err == nil {
-			return true, nil
+			if successCount >= 5 {
+				return true, nil
+			}
+			successCount++
+			return false, nil
 		}
 		logger.Debug("control plane not ready yet – %s", err.Error())
 		return false, nil

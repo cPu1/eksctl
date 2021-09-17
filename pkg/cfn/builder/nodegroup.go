@@ -22,33 +22,30 @@ import (
 
 // NodeGroupResourceSet stores the resource information of the nodegroup
 type NodeGroupResourceSet struct {
-	rs                   *resourceSet
-	clusterSpec          *api.ClusterConfig
-	spec                 *api.NodeGroup
-	supportsManagedNodes bool
-	forceAddCNIPolicy    bool
-	ec2API               ec2iface.EC2API
-	iamAPI               iamiface.IAMAPI
-	instanceProfileARN   *gfnt.Value
-	securityGroups       []*gfnt.Value
-	vpc                  *gfnt.Value
-	vpcImporter          vpc.Importer
-	bootstrapper         nodebootstrap.Bootstrapper
+	rs                 *resourceSet
+	clusterSpec        *api.ClusterConfig
+	spec               *api.NodeGroup
+	forceAddCNIPolicy  bool
+	ec2API             ec2iface.EC2API
+	iamAPI             iamiface.IAMAPI
+	instanceProfileARN *gfnt.Value
+	securityGroups     []*gfnt.Value
+	vpc                *gfnt.Value
+	vpcImporter        vpc.Importer
+	bootstrapper       nodebootstrap.Bootstrapper
 }
 
 // NewNodeGroupResourceSet returns a resource set for a nodegroup embedded in a cluster config
-func NewNodeGroupResourceSet(ec2API ec2iface.EC2API, iamAPI iamiface.IAMAPI, spec *api.ClusterConfig, ng *api.NodeGroup,
-	supportsManagedNodes, forceAddCNIPolicy bool, vpcImporter vpc.Importer) *NodeGroupResourceSet {
+func NewNodeGroupResourceSet(ec2API ec2iface.EC2API, iamAPI iamiface.IAMAPI, spec *api.ClusterConfig, ng *api.NodeGroup, bootstrapper nodebootstrap.Bootstrapper, forceAddCNIPolicy bool, vpcImporter vpc.Importer) *NodeGroupResourceSet {
 	return &NodeGroupResourceSet{
-		rs:                   newResourceSet(),
-		supportsManagedNodes: supportsManagedNodes,
-		forceAddCNIPolicy:    forceAddCNIPolicy,
-		clusterSpec:          spec,
-		spec:                 ng,
-		ec2API:               ec2API,
-		iamAPI:               iamAPI,
-		vpcImporter:          vpcImporter,
-		bootstrapper:         nodebootstrap.NewBootstrapper(spec, ng),
+		rs:                newResourceSet(),
+		forceAddCNIPolicy: forceAddCNIPolicy,
+		clusterSpec:       spec,
+		spec:              ng,
+		ec2API:            ec2API,
+		iamAPI:            iamAPI,
+		vpcImporter:       vpcImporter,
+		bootstrapper:      bootstrapper,
 	}
 }
 
@@ -139,55 +136,14 @@ func (n *NodeGroupResourceSet) addResourcesForNodeGroup() error {
 		launchTemplateData.KeyName = gfnt.NewString(*n.spec.SSH.PublicKeyName)
 	}
 
-	if volumeSize := n.spec.VolumeSize; volumeSize != nil && *volumeSize > 0 {
-		var (
-			kmsKeyID         *gfnt.Value
-			volumeIOPS       *gfnt.Value
-			volumeThroughput *gfnt.Value
-			volumeType       = *n.spec.VolumeType
-		)
-
-		if api.IsSetAndNonEmptyString(n.spec.VolumeKmsKeyID) {
-			kmsKeyID = gfnt.NewString(*n.spec.VolumeKmsKeyID)
-		}
-
-		if volumeType == api.NodeVolumeTypeIO1 || volumeType == api.NodeVolumeTypeGP3 {
-			volumeIOPS = gfnt.NewInteger(*n.spec.VolumeIOPS)
-		}
-
-		if volumeType == api.NodeVolumeTypeGP3 {
-			volumeThroughput = gfnt.NewInteger(*n.spec.VolumeThroughput)
-		}
-
-		launchTemplateData.BlockDeviceMappings = []gfnec2.LaunchTemplate_BlockDeviceMapping{{
-			DeviceName: gfnt.NewString(*n.spec.VolumeName),
-			Ebs: &gfnec2.LaunchTemplate_Ebs{
-				VolumeSize: gfnt.NewInteger(*volumeSize),
-				VolumeType: gfnt.NewString(volumeType),
-				Encrypted:  gfnt.NewBoolean(*n.spec.VolumeEncrypted),
-				KmsKeyId:   kmsKeyID,
-				Iops:       volumeIOPS,
-				Throughput: volumeThroughput,
-			},
-		}}
-
-		if n.spec.AdditionalEncryptedVolume != "" {
-			launchTemplateData.BlockDeviceMappings = append(launchTemplateData.BlockDeviceMappings, gfnec2.LaunchTemplate_BlockDeviceMapping{
-				DeviceName: gfnt.NewString(n.spec.AdditionalEncryptedVolume),
-				Ebs: &gfnec2.LaunchTemplate_Ebs{
-					Encrypted: gfnt.NewBoolean(*n.spec.VolumeEncrypted),
-					KmsKeyId:  kmsKeyID,
-				},
-			})
-		}
-	}
+	launchTemplateData.BlockDeviceMappings = makeBlockDeviceMappings(n.spec.NodeGroupBase)
 
 	n.newResource("NodeGroupLaunchTemplate", &gfnec2.LaunchTemplate{
 		LaunchTemplateName: launchTemplateName,
 		LaunchTemplateData: launchTemplateData,
 	})
 
-	vpcZoneIdentifier, err := AssignSubnets(n.spec.NodeGroupBase, n.vpcImporter, n.clusterSpec)
+	vpcZoneIdentifier, err := AssignSubnets(n.spec.NodeGroupBase, n.vpcImporter, n.clusterSpec, n.ec2API)
 	if err != nil {
 		return err
 	}
@@ -241,7 +197,7 @@ func generateNodeName(ng *api.NodeGroupBase, meta *api.ClusterMeta) string {
 }
 
 // AssignSubnets subnets based on the specified availability zones
-func AssignSubnets(spec *api.NodeGroupBase, vpcImporter vpc.Importer, clusterSpec *api.ClusterConfig) (*gfnt.Value, error) {
+func AssignSubnets(spec *api.NodeGroupBase, vpcImporter vpc.Importer, clusterSpec *api.ClusterConfig, ec2API ec2iface.EC2API) (*gfnt.Value, error) {
 	// currently goformation type system doesn't allow specifying `VPCZoneIdentifier: { "Fn::ImportValue": ... }`,
 	// and tags don't have `PropagateAtLaunch` field, so we have a custom method here until this gets resolved
 
@@ -252,7 +208,7 @@ func AssignSubnets(spec *api.NodeGroupBase, vpcImporter vpc.Importer, clusterSpe
 			subnets = clusterSpec.VPC.Subnets.Private
 			typ = "private"
 		}
-		subnetIDs, err := vpc.SelectNodeGroupSubnets(spec.AvailabilityZones, spec.Subnets, subnets)
+		subnetIDs, err := vpc.SelectNodeGroupSubnets(spec.AvailabilityZones, spec.Subnets, subnets, ec2API, clusterSpec.VPC.ID)
 		if api.IsEnabled(spec.EFAEnabled) && len(subnetIDs) > 1 {
 			subnetIDs = []string{subnetIDs[0]}
 			logger.Info("EFA requires all nodes be in a single subnet, arbitrarily choosing one: %s", subnetIDs)

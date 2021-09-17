@@ -3,7 +3,6 @@ site_description: 'The official CLI for Amazon EKS'
 site_author: 'eksctl authors'
 repo_name: 'weaveworks/eksctl'
 repo_url: 'https://github.com/weaveworks/eksctl'
-copyright: 'Copyright &copy; 2021 Weaveworks'
 docs_dir: src
 edit_uri: ""
 
@@ -17,11 +16,11 @@ nav:
         - Clusters:
             - usage/creating-and-managing-clusters.md
             - usage/unowned-clusters.md
+            - usage/eks-connector.md
             - usage/customizing-the-kubelet.md
             - usage/cloudwatch-cluster-logging.md
             - usage/eks-private-cluster.md
             - usage/addons.md
-            - usage/gitops.md
             - usage/emr-access.md
             - usage/fargate-support.md
             - usage/cluster-upgrade.md
@@ -29,6 +28,7 @@ nav:
         - Nodegroups:
             - usage/managing-nodegroups.md
             - usage/nodegroup-upgrade.md
+            - usage/nodegroup-with-custom-subnet.md
             - usage/eks-managed-nodes.md
             - usage/launch-template-support.md
             - usage/instance-selector.md
@@ -37,7 +37,11 @@ nav:
             - usage/arm-support.md
             - usage/autoscaling.md
             - usage/custom-ami-support.md
+            - usage/container-runtime.md
             - usage/windows-worker-nodes.md
+        - GitOps:
+            - usage/gitops-v2.md
+            - usage/gitops-v1.md
         - Security:
             - usage/security.md
             - usage/kms-encryption.md
@@ -51,6 +55,7 @@ nav:
             - usage/iamserviceaccounts.md
         - usage/dry-run.md
         - usage/schema.md
+        - usage/eksctl-anywhere.md
         - usage/troubleshooting.md
         - FAQ: usage/faq.md
     - Examples: "https://github.com/weaveworks/eksctl/tree/main/examples"

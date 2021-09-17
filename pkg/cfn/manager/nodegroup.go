@@ -13,6 +13,7 @@ import (
 	"github.com/kris-nova/logger"
 	"github.com/pkg/errors"
 	"github.com/tidwall/gjson"
+	"github.com/weaveworks/eksctl/pkg/nodebootstrap"
 
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/cfn/builder"
@@ -39,6 +40,7 @@ type NodeGroupSummary struct {
 	CreationTime         *time.Time
 	NodeInstanceRoleARN  string
 	AutoScalingGroupName string
+	Version              string
 }
 
 // NodeGroupStack represents a nodegroup and its type
@@ -53,11 +55,15 @@ func (c *StackCollection) makeNodeGroupStackName(name string) string {
 }
 
 // createNodeGroupTask creates the nodegroup
-func (c *StackCollection) createNodeGroupTask(errs chan error, ng *api.NodeGroup, supportsManagedNodes, forceAddCNIPolicy bool, vpcImporter vpc.Importer) error {
+func (c *StackCollection) createNodeGroupTask(errs chan error, ng *api.NodeGroup, forceAddCNIPolicy bool, vpcImporter vpc.Importer) error {
 	name := c.makeNodeGroupStackName(ng.Name)
 
 	logger.Info("building nodegroup stack %q", name)
-	stack := builder.NewNodeGroupResourceSet(c.ec2API, c.iamAPI, c.spec, ng, supportsManagedNodes, forceAddCNIPolicy, vpcImporter)
+	bootstrapper, err := nodebootstrap.NewBootstrapper(c.spec, ng)
+	if err != nil {
+		return errors.Wrap(err, "error creating bootstrapper")
+	}
+	stack := builder.NewNodeGroupResourceSet(c.ec2API, c.iamAPI, c.spec, ng, bootstrapper, forceAddCNIPolicy, vpcImporter)
 	if err := stack.AddAllResources(); err != nil {
 		return err
 	}
@@ -76,7 +82,8 @@ func (c *StackCollection) createManagedNodeGroupTask(errorCh chan error, ng *api
 	name := c.makeNodeGroupStackName(ng.Name)
 
 	logger.Info("building managed nodegroup stack %q", name)
-	stack := builder.NewManagedNodeGroup(c.ec2API, c.spec, ng, builder.NewLaunchTemplateFetcher(c.ec2API), forceAddCNIPolicy, vpcImporter)
+	bootstrapper := nodebootstrap.NewManagedBootstrapper(c.spec, ng)
+	stack := builder.NewManagedNodeGroup(c.ec2API, c.spec, ng, builder.NewLaunchTemplateFetcher(c.ec2API), bootstrapper, forceAddCNIPolicy, vpcImporter)
 	if err := stack.AddAllResources(); err != nil {
 		return err
 	}
@@ -97,10 +104,10 @@ func (c *StackCollection) DescribeNodeGroupStacks() ([]*Stack, error) {
 
 	nodeGroupStacks := []*Stack{}
 	for _, s := range stacks {
-		if *s.StackStatus == cfn.StackStatusDeleteComplete {
+		switch *s.StackStatus {
+		case cfn.StackStatusDeleteComplete:
 			continue
-		}
-		if *s.StackStatus == cfn.StackStatusDeleteFailed {
+		case cfn.StackStatusDeleteFailed:
 			logger.Warning("stack's status of nodegroup named %s is %s", *s.StackName, *s.StackStatus)
 			continue
 		}
@@ -367,7 +374,6 @@ func getNodeGroupPaths(tags []*cfn.Tag) (*nodeGroupPaths, error) {
 		}
 		makeScalingPath := func(field string) string {
 			return makePath(fmt.Sprintf("ScalingConfig.%s", field))
-
 		}
 		return &nodeGroupPaths{
 			InstanceType:    makePath("InstanceTypes.0"),

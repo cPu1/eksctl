@@ -11,19 +11,19 @@ const (
 )
 
 type Ubuntu struct {
-	clusterName string
-	ng          *api.NodeGroup
+	clusterConfig *api.ClusterConfig
+	np            api.NodePool
 }
 
-func NewUbuntuBootstrapper(clusterName string, ng *api.NodeGroup) *Ubuntu {
+func NewUbuntuBootstrapper(clusterConfig *api.ClusterConfig, np api.NodePool) *Ubuntu {
 	return &Ubuntu{
-		clusterName: clusterName,
-		ng:          ng,
+		clusterConfig: clusterConfig,
+		np:            np,
 	}
 }
 
 func (b *Ubuntu) UserData() (string, error) {
-	body, err := linuxConfig(ubuntuBootScript, b.clusterName, b.ng)
+	body, err := linuxConfig(b.clusterConfig, ubuntuBootScript, b.np)
 	if err != nil {
 		return "", errors.Wrap(err, "encoding user data")
 	}

@@ -27,16 +27,18 @@ func upgradeNodeGroupCmd(cmd *cmdutils.Cmd) {
 		return upgradeNodeGroup(cmd, options)
 	}
 
-	cmd.FlagSetGroup.InFlagSet("General", func(fs *pflag.FlagSet) {
-		fs.StringVar(&cfg.Metadata.Name, "cluster", "", "EKS cluster name")
+	cmd.FlagSetGroup.InFlagSet("Nodegroup", func(fs *pflag.FlagSet) {
 		fs.StringVar(&options.NodegroupName, "name", "", "Nodegroup name")
-		fs.StringVar(&options.KubernetesVersion, "kubernetes-version", "", "Kubernetes version")
 		fs.StringVar(&options.LaunchTemplateVersion, "launch-template-version", "", "Launch template version")
+		fs.StringVar(&options.KubernetesVersion, "kubernetes-version", "", "Kubernetes version")
 		fs.BoolVar(&options.ForceUpgrade, "force-upgrade", false, "Force the update if the existing node group's pods are unable to be drained due to a pod disruption budget issue")
 		fs.StringVar(&options.ReleaseVersion, "release-version", "", "AMI version of the EKS optimized AMI to use")
+	})
+
+	cmd.FlagSetGroup.InFlagSet("General", func(fs *pflag.FlagSet) {
+		cmdutils.AddClusterFlag(fs, cmd.ClusterConfig.Metadata)
 
 		cmdutils.AddRegionFlag(fs, &cmd.ProviderConfig)
-		cmdutils.AddConfigFileFlag(fs, &cmd.ClusterConfigFile)
 		cmd.Wait = true
 		cmdutils.AddWaitFlag(fs, &cmd.Wait, "nodegroup upgrade to complete")
 
@@ -66,7 +68,7 @@ func upgradeNodeGroup(cmd *cmdutils.Cmd, options managed.UpgradeOptions) error {
 		return cmdutils.ErrMustBeSet("name")
 	}
 
-	ctl, err := cmd.NewCtl()
+	ctl, err := cmd.NewProviderForExistingCluster()
 	if err != nil {
 		return err
 	}
@@ -80,6 +82,6 @@ func upgradeNodeGroup(cmd *cmdutils.Cmd, options managed.UpgradeOptions) error {
 		return err
 	}
 
-	return nodegroup.New(cfg, ctl, clientSet).Upgrade(options)
+	return nodegroup.New(cfg, ctl, clientSet).Upgrade(options, cmd.Wait)
 
 }

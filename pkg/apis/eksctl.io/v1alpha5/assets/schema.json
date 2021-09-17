@@ -73,6 +73,11 @@
         },
         "version": {
           "type": "string"
+        },
+        "wellKnownPolicies": {
+          "$ref": "#/definitions/WellKnownPolicies",
+          "description": "for attaching common IAM policies",
+          "x-intellij-html-description": "for attaching common IAM policies"
         }
       },
       "preferredOrder": [
@@ -82,6 +87,7 @@
         "attachPolicyARNs",
         "attachPolicy",
         "permissionsBoundary",
+        "wellKnownPolicies",
         "tags"
       ],
       "additionalProperties": false,
@@ -475,17 +481,16 @@
         },
         "version": {
           "type": "string",
-          "description": "Valid variants are: `\"1.14\"`, `\"1.15\"`, `\"1.16\"`, `\"1.17\"`, `\"1.18\"`, `\"1.19\"` (default), `\"1.20\"`.",
-          "x-intellij-html-description": "Valid variants are: <code>&quot;1.14&quot;</code>, <code>&quot;1.15&quot;</code>, <code>&quot;1.16&quot;</code>, <code>&quot;1.17&quot;</code>, <code>&quot;1.18&quot;</code>, <code>&quot;1.19&quot;</code> (default), <code>&quot;1.20&quot;</code>.",
-          "default": "1.19",
+          "description": "Valid variants are: `\"1.16\"`, `\"1.17\"`, `\"1.18\"`, `\"1.19\"`, `\"1.20\"` (default), `\"1.21\"`.",
+          "x-intellij-html-description": "Valid variants are: <code>&quot;1.16&quot;</code>, <code>&quot;1.17&quot;</code>, <code>&quot;1.18&quot;</code>, <code>&quot;1.19&quot;</code>, <code>&quot;1.20&quot;</code> (default), <code>&quot;1.21&quot;</code>.",
+          "default": "1.20",
           "enum": [
-            "1.14",
-            "1.15",
             "1.16",
             "1.17",
             "1.18",
             "1.19",
-            "1.20"
+            "1.20",
+            "1.21"
           ]
         }
       },
@@ -555,7 +560,7 @@
         },
         "extraCIDRs": {
           "items": {
-            "$ref": "#/definitions/github.com|weaveworks|eksctl|pkg|utils|ipnet.IPNet"
+            "type": "string"
           },
           "type": "array",
           "description": "for additional CIDR associations, e.g. a CIDR for private subnets or any ad-hoc subnets",
@@ -702,84 +707,50 @@
     },
     "Flux": {
       "properties": {
-        "authTokenPath": {
-          "type": "string",
-          "description": "Path to a file containing a Personal Access Token with repo permissions Not required if GITHUB_TOKEN or GITLAB_TOKEN set on the environment",
-          "x-intellij-html-description": "Path to a file containing a Personal Access Token with repo permissions Not required if GITHUB<em>TOKEN or GITLAB</em>TOKEN set on the environment"
-        },
-        "branch": {
-          "type": "string",
-          "description": "The name of the branch which Flux will commit to",
-          "x-intellij-html-description": "The name of the branch which Flux will commit to"
+        "flags": {
+          "$ref": "#/definitions/FluxFlags",
+          "description": "an arbitrary map of string to string to pass any flags to Flux bootstrap via eksctl see https://fluxcd.io/docs/ for information on all flags",
+          "x-intellij-html-description": "an arbitrary map of string to string to pass any flags to Flux bootstrap via eksctl see https://fluxcd.io/docs/ for information on all flags"
         },
         "gitProvider": {
           "type": "string",
           "description": "The repository hosting service. Can be either Github or Gitlab.",
           "x-intellij-html-description": "The repository hosting service. Can be either Github or Gitlab."
-        },
-        "kubeconfig": {
-          "type": "string",
-          "description": "Path to the kubernetes config for the cluster. Defaults to $HOME/.kube/config",
-          "x-intellij-html-description": "Path to the kubernetes config for the cluster. Defaults to $HOME/.kube/config"
-        },
-        "namespace": {
-          "type": "string",
-          "description": "The kubernetes namespace into which Flux v2 components will be deployed",
-          "x-intellij-html-description": "The kubernetes namespace into which Flux v2 components will be deployed"
-        },
-        "owner": {
-          "type": "string",
-          "description": "The Username or Org name under which Flux v2 will create a repo",
-          "x-intellij-html-description": "The Username or Org name under which Flux v2 will create a repo"
-        },
-        "path": {
-          "type": "string",
-          "description": "A relative path within the repository. Gitops sync will be scoped to files under this path",
-          "x-intellij-html-description": "A relative path within the repository. Gitops sync will be scoped to files under this path"
-        },
-        "personal": {
-          "type": "boolean",
-          "description": "If true, Flux will create the Gitops repo in a personal account. If false, Flux will create the Gitops repo in an org.",
-          "x-intellij-html-description": "If true, Flux will create the Gitops repo in a personal account. If false, Flux will create the Gitops repo in an org.",
-          "default": "false"
-        },
-        "repository": {
-          "type": "string",
-          "description": "The name of the repository which Flux v2 will create to store gitops configuration",
-          "x-intellij-html-description": "The name of the repository which Flux v2 will create to store gitops configuration"
         }
       },
       "preferredOrder": [
         "gitProvider",
-        "owner",
-        "repository",
-        "namespace",
-        "kubeconfig",
-        "branch",
-        "path",
-        "personal",
-        "authTokenPath"
+        "flags"
       ],
       "additionalProperties": false,
       "description": "groups all configuration options related to a Git repository used for GitOps Toolkit (Flux v2).",
       "x-intellij-html-description": "groups all configuration options related to a Git repository used for GitOps Toolkit (Flux v2)."
     },
+    "FluxFlags": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object",
+      "description": "a map of string for passing arbitrary flags to Flux bootstrap",
+      "x-intellij-html-description": "a map of string for passing arbitrary flags to Flux bootstrap",
+      "default": "{}"
+    },
     "Git": {
       "properties": {
         "bootstrapProfile": {
           "$ref": "#/definitions/Profile",
-          "description": "[Installing a Quickstart profile](/usage/gitops/#installing-a-quickstart-profile-in-your-cluster)",
-          "x-intellij-html-description": "<a href=\"/usage/gitops/#installing-a-quickstart-profile-in-your-cluster\">Installing a Quickstart profile</a>"
+          "description": "holds options to install a BootstrapProfile on the cluster. DEPRECATED.",
+          "x-intellij-html-description": "holds options to install a BootstrapProfile on the cluster. DEPRECATED."
         },
         "operator": {
           "$ref": "#/definitions/Operator",
-          "description": "[Enable Repo](/usage/gitops/#installing-flux-v1)",
-          "x-intellij-html-description": "<a href=\"/usage/gitops/#installing-flux-v1\">Enable Repo</a>"
+          "description": "holds options to configure the Helm Operator in conjunction with a Flux v1 installation. DEPRECATED.",
+          "x-intellij-html-description": "holds options to configure the Helm Operator in conjunction with a Flux v1 installation. DEPRECATED."
         },
         "repo": {
           "$ref": "#/definitions/Repo",
-          "description": "[Enable Repo](/usage/gitops/#installing-flux-v1)",
-          "x-intellij-html-description": "<a href=\"/usage/gitops/#installing-flux-v1\">Enable Repo</a>"
+          "description": "holds options to enable Flux v1 on your cluster. DEPRECATED.",
+          "x-intellij-html-description": "holds options to enable Flux v1 on your cluster. DEPRECATED."
         }
       },
       "preferredOrder": [
@@ -795,8 +766,8 @@
       "properties": {
         "flux": {
           "$ref": "#/definitions/Flux",
-          "description": "[Enable Toolkit](/usage/gitops/#experimental-installing-gitops-toolkit-flux-v2)",
-          "x-intellij-html-description": "<a href=\"/usage/gitops/#experimental-installing-gitops-toolkit-flux-v2\">Enable Toolkit</a>"
+          "description": "holds options to enable Flux v2 on your cluster",
+          "x-intellij-html-description": "holds options to enable Flux v2 on your cluster"
         }
       },
       "preferredOrder": [
@@ -852,8 +823,8 @@
         },
         "gpus": {
           "type": "integer",
-          "description": "specifies the number of GPUs",
-          "x-intellij-html-description": "specifies the number of GPUs"
+          "description": "specifies the number of GPUs. It can be set to 0 to select non-GPU instance types.",
+          "x-intellij-html-description": "specifies the number of GPUs. It can be set to 0 to select non-GPU instance types."
         },
         "memory": {
           "type": "string",
@@ -953,6 +924,11 @@
           "type": "array",
           "description": "Limit [nodes to specific AZs](/usage/autoscaling/#zone-aware-auto-scaling)",
           "x-intellij-html-description": "Limit <a href=\"/usage/autoscaling/#zone-aware-auto-scaling\">nodes to specific AZs</a>"
+        },
+        "bottlerocket": {
+          "$ref": "#/definitions/NodeGroupBottlerocket",
+          "description": "specifies settings for Bottlerocket nodes",
+          "x-intellij-html-description": "specifies settings for Bottlerocket nodes"
         },
         "desiredCapacity": {
           "type": "integer"
@@ -1096,6 +1072,11 @@
           "description": "taints to apply to the nodegroup",
           "x-intellij-html-description": "taints to apply to the nodegroup"
         },
+        "updateConfig": {
+          "$ref": "#/definitions/NodeGroupUpdateConfig",
+          "description": "configures how to update NodeGroups.",
+          "x-intellij-html-description": "configures how to update NodeGroups."
+        },
         "volumeEncrypted": {
           "type": "boolean"
         },
@@ -1166,9 +1147,11 @@
         "placement",
         "efaEnabled",
         "instanceSelector",
+        "bottlerocket",
         "instanceTypes",
         "spot",
         "taints",
+        "updateConfig",
         "launchTemplate",
         "releaseVersion"
       ],
@@ -1247,7 +1230,9 @@
           "x-intellij-html-description": "Limit <a href=\"/usage/autoscaling/#zone-aware-auto-scaling\">nodes to specific AZs</a>"
         },
         "bottlerocket": {
-          "$ref": "#/definitions/NodeGroupBottlerocket"
+          "$ref": "#/definitions/NodeGroupBottlerocket",
+          "description": "specifies settings for Bottlerocket nodes",
+          "x-intellij-html-description": "specifies settings for Bottlerocket nodes"
         },
         "classicLoadBalancerNames": {
           "items": {
@@ -1261,6 +1246,11 @@
           "type": "string",
           "description": "[Custom address](/usage/vpc-networking/#custom-cluster-dns-address) used for DNS lookups",
           "x-intellij-html-description": "<a href=\"/usage/vpc-networking/#custom-cluster-dns-address\">Custom address</a> used for DNS lookups"
+        },
+        "containerRuntime": {
+          "type": "string",
+          "description": "defines the runtime (CRI) to use for containers on the node",
+          "x-intellij-html-description": "defines the runtime (CRI) to use for containers on the node"
         },
         "cpuCredits": {
           "type": "string",
@@ -1398,6 +1388,11 @@
           "description": "Associate target group with auto scaling group",
           "x-intellij-html-description": "Associate target group with auto scaling group"
         },
+        "updateConfig": {
+          "$ref": "#/definitions/NodeGroupUpdateConfig",
+          "description": "configures how to update NodeGroups.",
+          "x-intellij-html-description": "configures how to update NodeGroups."
+        },
         "volumeEncrypted": {
           "type": "boolean"
         },
@@ -1468,15 +1463,17 @@
         "placement",
         "efaEnabled",
         "instanceSelector",
+        "bottlerocket",
         "instancesDistribution",
         "asgMetricsCollection",
         "cpuCredits",
         "classicLoadBalancerNames",
         "targetGroupARNs",
         "taints",
-        "bottlerocket",
+        "updateConfig",
         "clusterDNS",
-        "kubeletExtraConfig"
+        "kubeletExtraConfig",
+        "containerRuntime"
       ],
       "additionalProperties": false,
       "description": "holds configuration attributes that are specific to a nodegroup",
@@ -1761,6 +1758,27 @@
       "description": "represents a Kubernetes taint",
       "x-intellij-html-description": "represents a Kubernetes taint"
     },
+    "NodeGroupUpdateConfig": {
+      "properties": {
+        "maxUnavailable": {
+          "type": "integer",
+          "description": "sets the max number of nodes that can become unavailable when updating a nodegroup (specified as number)",
+          "x-intellij-html-description": "sets the max number of nodes that can become unavailable when updating a nodegroup (specified as number)"
+        },
+        "maxUnavailablePercentage": {
+          "type": "integer",
+          "description": "sets the max number of nodes that can become unavailable when updating a nodegroup (specified as percentage)",
+          "x-intellij-html-description": "sets the max number of nodes that can become unavailable when updating a nodegroup (specified as percentage)"
+        }
+      },
+      "preferredOrder": [
+        "maxUnavailable",
+        "maxUnavailablePercentage"
+      ],
+      "additionalProperties": false,
+      "description": "contains the configuration for updating NodeGroups.",
+      "x-intellij-html-description": "contains the configuration for updating NodeGroups."
+    },
     "OIDCIdentityProvider": {
       "required": [
         "name",
@@ -1826,42 +1844,42 @@
             "type": "string"
           },
           "type": "array",
-          "description": "Additional command line arguments for the Flux daemon",
-          "x-intellij-html-description": "Additional command line arguments for the Flux daemon"
+          "description": "Additional command line arguments for the Flux daemon DEPRECATED",
+          "x-intellij-html-description": "Additional command line arguments for the Flux daemon DEPRECATED"
         },
         "additionalHelmOperatorArgs": {
           "items": {
             "type": "string"
           },
           "type": "array",
-          "description": "Additional command line arguments for the Helm Operator",
-          "x-intellij-html-description": "Additional command line arguments for the Helm Operator"
+          "description": "Additional command line arguments for the Helm Operator DEPRECATED",
+          "x-intellij-html-description": "Additional command line arguments for the Helm Operator DEPRECATED"
         },
         "commitOperatorManifests": {
           "type": "boolean",
-          "description": "Commit and push Flux manifests to the Git Repo on install",
-          "x-intellij-html-description": "Commit and push Flux manifests to the Git Repo on install"
+          "description": "Commit and push Flux manifests to the Git Repo on install DEPRECATED",
+          "x-intellij-html-description": "Commit and push Flux manifests to the Git Repo on install DEPRECATED"
         },
         "label": {
           "type": "string",
-          "description": "Git label to keep track of Flux's sync progress; this is equivalent to overriding --git-sync-tag and --git-notes-ref in Flux",
-          "x-intellij-html-description": "Git label to keep track of Flux's sync progress; this is equivalent to overriding --git-sync-tag and --git-notes-ref in Flux"
+          "description": "Git label to keep track of Flux's sync progress; this is equivalent to overriding --git-sync-tag and --git-notes-ref in Flux DEPRECATED",
+          "x-intellij-html-description": "Git label to keep track of Flux's sync progress; this is equivalent to overriding --git-sync-tag and --git-notes-ref in Flux DEPRECATED"
         },
         "namespace": {
           "type": "string",
-          "description": "Cluster namespace where to install Flux and the Helm Operator e.g. flux",
-          "x-intellij-html-description": "Cluster namespace where to install Flux and the Helm Operator e.g. flux"
+          "description": "Cluster namespace where to install Flux and the Helm Operator e.g. flux DEPRECATED",
+          "x-intellij-html-description": "Cluster namespace where to install Flux and the Helm Operator e.g. flux DEPRECATED"
         },
         "readOnly": {
           "type": "boolean",
-          "description": "Instruct Flux to read-only mode and create the deploy key as read-only",
-          "x-intellij-html-description": "Instruct Flux to read-only mode and create the deploy key as read-only",
+          "description": "Instruct Flux to read-only mode and create the deploy key as read-only DEPRECATED",
+          "x-intellij-html-description": "Instruct Flux to read-only mode and create the deploy key as read-only DEPRECATED",
           "default": "false"
         },
         "withHelm": {
           "type": "boolean",
-          "description": "Install the Helm Operator",
-          "x-intellij-html-description": "Install the Helm Operator"
+          "description": "Install the Helm Operator DEPRECATED",
+          "x-intellij-html-description": "Install the Helm Operator DEPRECATED"
         }
       },
       "preferredOrder": [
@@ -1930,8 +1948,8 @@
         },
         "revision": {
           "type": "string",
-          "description": "of the Quick Start profile. Can be a branch, tag or commit hash",
-          "x-intellij-html-description": "of the Quick Start profile. Can be a branch, tag or commit hash"
+          "description": "of the Quick Start profile. Can be a branch, tag or commit hash DEPRECATED.",
+          "x-intellij-html-description": "of the Quick Start profile. Can be a branch, tag or commit hash DEPRECATED."
         },
         "source": {
           "type": "string",
@@ -1955,31 +1973,31 @@
       "properties": {
         "branch": {
           "type": "string",
-          "description": "The git branch under which cluster configuration files will be committed & pushed, e.g. master",
-          "x-intellij-html-description": "The git branch under which cluster configuration files will be committed &amp; pushed, e.g. master"
+          "description": "The git branch under which cluster configuration files will be committed & pushed, e.g. master DEPRECATED",
+          "x-intellij-html-description": "The git branch under which cluster configuration files will be committed &amp; pushed, e.g. master DEPRECATED"
         },
         "email": {
           "type": "string",
-          "description": "Git email which will be used to commit changes",
-          "x-intellij-html-description": "Git email which will be used to commit changes"
+          "description": "Git email which will be used to commit changes DEPRECATED",
+          "x-intellij-html-description": "Git email which will be used to commit changes DEPRECATED"
         },
         "fluxPath": {
           "type": "string",
-          "description": "The directory under which Flux configuration files will be written, e.g. flux/",
-          "x-intellij-html-description": "The directory under which Flux configuration files will be written, e.g. flux/"
+          "description": "The directory under which Flux configuration files will be written, e.g. flux/ DEPRECATED",
+          "x-intellij-html-description": "The directory under which Flux configuration files will be written, e.g. flux/ DEPRECATED"
         },
         "paths": {
           "items": {
             "type": "string"
           },
           "type": "array",
-          "description": "Relative paths within the Git repository which the GitOps operator will monitor to find Kubernetes manifests to apply, e.g. [\"kube-system\", \"base\"]",
-          "x-intellij-html-description": "Relative paths within the Git repository which the GitOps operator will monitor to find Kubernetes manifests to apply, e.g. [&quot;kube-system&quot;, &quot;base&quot;]"
+          "description": "Relative paths within the Git repository which the GitOps operator will monitor to find Kubernetes manifests to apply, e.g. [\"kube-system\", \"base\"] DEPRECATED",
+          "x-intellij-html-description": "Relative paths within the Git repository which the GitOps operator will monitor to find Kubernetes manifests to apply, e.g. [&quot;kube-system&quot;, &quot;base&quot;] DEPRECATED"
         },
         "privateSSHKeyPath": {
           "type": "string",
-          "description": "Path to the private SSH key to use to authenticate",
-          "x-intellij-html-description": "Path to the private SSH key to use to authenticate"
+          "description": "Path to the private SSH key to use to authenticate DEPRECATED",
+          "x-intellij-html-description": "Path to the private SSH key to use to authenticate DEPRECATED"
         },
         "url": {
           "type": "string",
@@ -1991,8 +2009,8 @@
         },
         "user": {
           "type": "string",
-          "description": "Git user which will be used to commit changes",
-          "x-intellij-html-description": "Git user which will be used to commit changes"
+          "description": "Git user which will be used to commit changes DEPRECATED",
+          "x-intellij-html-description": "Git user which will be used to commit changes DEPRECATED"
         }
       },
       "preferredOrder": [
@@ -2050,6 +2068,12 @@
           "x-intellij-html-description": "adds policies for using the ebs-csi-controller. See <a href=\"https://github.com/kubernetes-sigs/aws-ebs-csi-driver#set-up-driver-permission\">aws-ebs-csi-driver docs</a>.",
           "default": "false"
         },
+        "efsCSIController": {
+          "type": "boolean",
+          "description": "adds policies for using the efs-csi-controller. See [aws-efs-csi-driver docs](https://aws.amazon.com/blogs/containers/introducing-efs-csi-dynamic-provisioning).",
+          "x-intellij-html-description": "adds policies for using the efs-csi-controller. See <a href=\"https://aws.amazon.com/blogs/containers/introducing-efs-csi-dynamic-provisioning\">aws-efs-csi-driver docs</a>.",
+          "default": "false"
+        },
         "externalDNS": {
           "type": "boolean",
           "description": "adds external-dns policies for Amazon Route 53. See [external-dns docs](https://github.com/kubernetes-sigs/external-dns/blob/master/docs/tutorials/aws.md).",
@@ -2069,7 +2093,8 @@
         "awsLoadBalancerController",
         "externalDNS",
         "certManager",
-        "ebsCSIController"
+        "ebsCSIController",
+        "efsCSIController"
       ],
       "additionalProperties": false,
       "description": "for attaching common IAM policies",

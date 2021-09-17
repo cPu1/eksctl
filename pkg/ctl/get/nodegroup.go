@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/kris-nova/logger"
 	"github.com/weaveworks/eksctl/pkg/actions/nodegroup"
 
 	"github.com/pkg/errors"
@@ -63,23 +64,35 @@ func doGetNodeGroup(cmd *cmdutils.Cmd, ng *api.NodeGroup, params *getCmdParams) 
 		cfg.NodeGroups = append(cfg.NodeGroups, ng)
 	}
 
-	ctl, err := cmd.NewCtl()
+	ctl, err := cmd.NewProviderForExistingCluster()
 	if err != nil {
 		return err
 	}
 
 	if params.output == printers.TableType {
 		cmdutils.LogRegionAndVersionInfo(cmd.ClusterConfig.Metadata)
+	} else {
+		//log warnings and errors to stderr
+		logger.Writer = os.Stderr
+	}
+
+	if ok, err := ctl.CanOperate(cfg); !ok {
+		return err
+	}
+
+	clientSet, err := ctl.NewStdClientSet(cfg)
+	if err != nil {
+		return err
 	}
 
 	var summaries []*manager.NodeGroupSummary
 	if ng.Name == "" {
-		summaries, err = nodegroup.New(cfg, ctl, nil).GetAll()
+		summaries, err = nodegroup.New(cfg, ctl, clientSet).GetAll()
 		if err != nil {
 			return err
 		}
 	} else {
-		summary, err := nodegroup.New(cfg, ctl, nil).Get(ng.Name)
+		summary, err := nodegroup.New(cfg, ctl, clientSet).Get(ng.Name)
 		if err != nil {
 			return err
 		}

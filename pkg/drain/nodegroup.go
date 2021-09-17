@@ -25,7 +25,8 @@ import (
 // retryDelay is how long is slept before retry after an error occurs during drainage
 const retryDelay = 5 * time.Second
 
-//go:generate "$GOBIN/counterfeiter" -o fakes/fake_evictor.go . Evictor
+//go:generate go run github.com/maxbrunsfeld/counterfeiter/v6 -generate
+//counterfeiter:generate -o fakes/fake_evictor.go . Evictor
 type Evictor interface {
 	CanUseEvictions() error
 	EvictOrDeletePod(pod corev1.Pod) error
@@ -179,7 +180,7 @@ func (n *NodeGroupDrainer) evictPods(node string) (int, error) {
 	for _, pod := range pods {
 		// TODO: handle API rate limiter error
 		if err := n.evictor.EvictOrDeletePod(pod); err != nil {
-			return pending, err
+			return pending, errors.Wrapf(err, "error evicting pod: %s/%s", pod.Namespace, pod.Name)
 		}
 	}
 	return pending, nil

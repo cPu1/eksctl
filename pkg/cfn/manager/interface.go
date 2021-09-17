@@ -12,7 +12,8 @@ import (
 	"github.com/weaveworks/eksctl/pkg/vpc"
 )
 
-//go:generate counterfeiter -o fakes/fake_stack_manager.go . StackManager
+//go:generate go run github.com/maxbrunsfeld/counterfeiter/v6 -generate
+//counterfeiter:generate -o fakes/fake_stack_manager.go . StackManager
 type StackManager interface {
 	ListNodeGroupStacks() ([]NodeGroupStack, error)
 	DescribeNodeGroupStacksAndResources() (map[string]StackInfo, error)
@@ -52,7 +53,7 @@ type StackManager interface {
 	MakeClusterStackName() string
 	NewTasksToCreateClusterWithNodeGroups(nodeGroups []*v1alpha5.NodeGroup,
 		managedNodeGroups []*v1alpha5.ManagedNodeGroup, supportsManagedNodes bool, postClusterCreationTasks ...tasks.Task) *tasks.TaskTree
-	NewUnmanagedNodeGroupTask(nodeGroups []*v1alpha5.NodeGroup, supportsManagedNodes bool, forceAddCNIPolicy bool, importer vpc.Importer) *tasks.TaskTree
+	NewUnmanagedNodeGroupTask(nodeGroups []*v1alpha5.NodeGroup, forceAddCNIPolicy bool, importer vpc.Importer) *tasks.TaskTree
 	NewManagedNodeGroupTask(nodeGroups []*v1alpha5.ManagedNodeGroup, forceAddCNIPolicy bool, importer vpc.Importer) *tasks.TaskTree
 	NewClusterCompatTask() tasks.Task
 	NewTasksToCreateIAMServiceAccounts(serviceAccounts []*v1alpha5.ClusterIAMServiceAccount, oidc *iamoidc.OpenIDConnectManager, clientSetGetter kubernetes.ClientSetGetter) *tasks.TaskTree

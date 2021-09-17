@@ -143,6 +143,7 @@ func AppendAuthenticator(config *clientcmdapi.Config, clusterMeta *api.ClusterMe
 				Value: "regional",
 			},
 		},
+		ProvideClusterInfo: false,
 	}
 
 	switch authenticatorCMD {
@@ -317,6 +318,7 @@ func MaybeDeleteConfig(meta *api.ClusterMeta) {
 		fl, err := lockConfigFile(p)
 		if err != nil {
 			logger.Critical(err.Error())
+			return
 		}
 
 		defer func() {
@@ -340,6 +342,7 @@ func MaybeDeleteConfig(meta *api.ClusterMeta) {
 	fl, err := lockConfigFile(defaultFilename)
 	if err != nil {
 		logger.Critical(err.Error())
+		return
 	}
 
 	defer func() {

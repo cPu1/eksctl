@@ -2,6 +2,7 @@ package v1alpha5
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/cloudformation/cloudformationiface"
 	"github.com/aws/aws-sdk-go/service/cloudtrail/cloudtrailiface"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
+	"github.com/aws/aws-sdk-go/service/eks"
 	"github.com/aws/aws-sdk-go/service/eks/eksiface"
 	"github.com/aws/aws-sdk-go/service/elb/elbiface"
 	"github.com/aws/aws-sdk-go/service/elbv2/elbv2iface"
@@ -20,19 +22,16 @@ import (
 	"github.com/aws/aws-sdk-go/service/ssm/ssmiface"
 	"github.com/aws/aws-sdk-go/service/sts/stsiface"
 	"github.com/pkg/errors"
-	"github.com/weaveworks/eksctl/pkg/utils/taints"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	"github.com/weaveworks/eksctl/pkg/utils/taints"
 )
 
 // Values for `KubernetesVersion`
 // All valid values should go in this block
 const (
-	Version1_14 = "1.14"
-
-	Version1_15 = "1.15"
-
 	Version1_16 = "1.16"
 
 	Version1_17 = "1.17"
@@ -43,10 +42,12 @@ const (
 
 	Version1_20 = "1.20"
 
-	// DefaultVersion (default)
-	DefaultVersion = Version1_19
+	Version1_21 = "1.21"
 
-	LatestVersion = Version1_20
+	// DefaultVersion (default)
+	DefaultVersion = Version1_20
+
+	LatestVersion = Version1_21
 )
 
 // No longer supported versions
@@ -62,12 +63,18 @@ const (
 
 	// Version1_13 represents Kubernetes version 1.13.x
 	Version1_13 = "1.13"
+
+	// Version1_14 represents Kubernetes version 1.14.x
+	Version1_14 = "1.14"
+
+	// Version1_15 represents Kubernetes version 1.15.x
+	Version1_15 = "1.15"
 )
 
 // Not yet supported versions
 const (
-	// Version1_21 represents Kubernetes version 1.21.x
-	Version1_21 = "1.21"
+	// Version1_22 represents Kubernetes version 1.22.x
+	Version1_22 = "1.22"
 )
 
 const (
@@ -176,6 +183,12 @@ const (
 	NodeImageFamilyWindowsServer2019CoreContainer = "WindowsServer2019CoreContainer"
 	NodeImageFamilyWindowsServer2019FullContainer = "WindowsServer2019FullContainer"
 	NodeImageFamilyWindowsServer2004CoreContainer = "WindowsServer2004CoreContainer"
+)
+
+// Container runtime values.
+const (
+	ContainerRuntimeContainerD = "containerd"
+	ContainerRuntimeDockerD    = "dockerd"
 )
 
 const (
@@ -316,6 +329,11 @@ var (
 	DefaultNodeVolumeSize = 80
 )
 
+var (
+	// DefaultContainerRuntime defines the default container runtime.
+	DefaultContainerRuntime = ContainerRuntimeDockerD
+)
+
 // Enabled return pointer to true value
 // for use in defaulters of *bool fields
 func Enabled() *bool {
@@ -392,6 +410,7 @@ func DeprecatedVersions() []string {
 		Version1_12,
 		Version1_13,
 		Version1_14,
+		Version1_15,
 	}
 }
 
@@ -408,16 +427,16 @@ func IsDeprecatedVersion(version string) bool {
 // SupportedVersions are the versions of Kubernetes that EKS supports
 func SupportedVersions() []string {
 	return []string{
-		Version1_15,
 		Version1_16,
 		Version1_17,
 		Version1_18,
 		Version1_19,
 		Version1_20,
+		Version1_21,
 	}
 }
 
-// IsSupportedVersion returns true if the given version is a Kubernetes supported by eksctl and EKS
+// IsSupportedVersion returns true if the given Kubernetes version is supported by eksctl and EKS
 func IsSupportedVersion(version string) bool {
 	for _, v := range SupportedVersions() {
 		if version == v {
@@ -522,13 +541,15 @@ type KubernetesNetworkConfig struct {
 
 type EKSCTLCreated string
 
-// ClusterStatus hold read-only attributes of a cluster
+// ClusterStatus holds read-only attributes of a cluster
 type ClusterStatus struct {
-	Endpoint                 string        `json:"endpoint,omitempty"`
-	CertificateAuthorityData []byte        `json:"certificateAuthorityData,omitempty"`
-	ARN                      string        `json:"arn,omitempty"`
-	StackName                string        `json:"stackName,omitempty"`
-	EKSCTLCreated            EKSCTLCreated `json:"eksctlCreated,omitempty"`
+	Endpoint                 string                   `json:"endpoint,omitempty"`
+	CertificateAuthorityData []byte                   `json:"certificateAuthorityData,omitempty"`
+	ARN                      string                   `json:"arn,omitempty"`
+	KubernetesNetworkConfig  *KubernetesNetworkConfig `json:"-"`
+
+	StackName     string        `json:"stackName,omitempty"`
+	EKSCTLCreated EKSCTLCreated `json:"eksctlCreated,omitempty"`
 }
 
 // String returns canonical representation of ClusterMeta
@@ -729,6 +750,23 @@ func (c *ClusterConfig) AppendAvailabilityZone(newAZ string) {
 	c.AvailabilityZones = append(c.AvailabilityZones, newAZ)
 }
 
+// SetClusterStatus populates ClusterStatus using *eks.Cluster.
+func (c *ClusterConfig) SetClusterStatus(cluster *eks.Cluster) error {
+	if networkConfig := cluster.KubernetesNetworkConfig; networkConfig != nil && networkConfig.ServiceIpv4Cidr != nil {
+		c.Status.KubernetesNetworkConfig = &KubernetesNetworkConfig{
+			ServiceIPv4CIDR: *networkConfig.ServiceIpv4Cidr,
+		}
+	}
+	data, err := base64.StdEncoding.DecodeString(*cluster.CertificateAuthority.Data)
+	if err != nil {
+		return errors.Wrap(err, "decoding certificate authority data")
+	}
+	c.Status.Endpoint = *cluster.Endpoint
+	c.Status.CertificateAuthorityData = data
+	c.Status.ARN = *cluster.Arn
+	return nil
+}
+
 // NewNodeGroup creates a new NodeGroup, and returns a pointer to it
 func NewNodeGroup() *NodeGroup {
 	return &NodeGroup{
@@ -845,8 +883,9 @@ type NodeGroup struct {
 	// +optional
 	Taints taintsWrapper `json:"taints,omitempty"`
 
+	// UpdateConfig configures how to update NodeGroups.
 	// +optional
-	Bottlerocket *NodeGroupBottlerocket `json:"bottlerocket,omitempty"`
+	UpdateConfig *NodeGroupUpdateConfig `json:"updateConfig,omitempty"`
 
 	// [Custom
 	// address](/usage/vpc-networking/#custom-cluster-dns-address) used for DNS
@@ -857,6 +896,18 @@ type NodeGroup struct {
 	// [Customize `kubelet` config](/usage/customizing-the-kubelet/)
 	// +optional
 	KubeletExtraConfig *InlineDocument `json:"kubeletExtraConfig,omitempty"`
+
+	// ContainerRuntime defines the runtime (CRI) to use for containers on the node
+	// +optional
+	ContainerRuntime *string `json:"containerRuntime,omitempty"`
+}
+
+// GetContainerRuntime returns the container runtime.
+func (n *NodeGroup) GetContainerRuntime() string {
+	if n.ContainerRuntime != nil {
+		return *n.ContainerRuntime
+	}
+	return ""
 }
 
 func (n *NodeGroup) InstanceTypeList() []string {
@@ -864,6 +915,11 @@ func (n *NodeGroup) InstanceTypeList() []string {
 		return n.InstancesDistribution.InstanceTypes
 	}
 	return []string{n.InstanceType}
+}
+
+// NGTaints implements NodePool
+func (n *NodeGroup) NGTaints() []NodeGroupTaint {
+	return n.Taints
 }
 
 // BaseNodeGroup implements NodePool
@@ -875,7 +931,7 @@ func (n *NodeGroup) BaseNodeGroup() *NodeGroupBase {
 // cluster and linking it to a Git repository.
 // Note: this will replace the older Git types
 type GitOps struct {
-	// [Enable Toolkit](/usage/gitops/#experimental-installing-gitops-toolkit-flux-v2)
+	// Flux holds options to enable Flux v2 on your cluster
 	Flux *Flux `json:"flux,omitempty"`
 }
 
@@ -883,14 +939,16 @@ type GitOps struct {
 // cluster and linking it to a Git repository.
 // [Gitops Guide](/gitops-quickstart/)
 type Git struct {
-	// [Enable Repo](/usage/gitops/#installing-flux-v1)
+	// Repo holds options to enable Flux v1 on your cluster. DEPRECATED.
 	Repo *Repo `json:"repo,omitempty"`
 
-	// [Enable Repo](/usage/gitops/#installing-flux-v1)
+	// Operator holds options to configure the Helm Operator in conjunction with
+	// a Flux v1 installation. DEPRECATED.
 	// +optional
 	Operator Operator `json:"operator,omitempty"`
 
-	// [Installing a Quickstart profile](/usage/gitops/#installing-a-quickstart-profile-in-your-cluster)
+	// BootstrapProfile holds options to install a BootstrapProfile on the cluster.
+	// DEPRECATED.
 	// +optional
 	BootstrapProfile *Profile `json:"bootstrapProfile,omitempty"` // one or many profiles to enable on this cluster once it is created
 }
@@ -911,67 +969,48 @@ type Flux struct {
 	// The repository hosting service. Can be either Github or Gitlab.
 	GitProvider string `json:"gitProvider,omitempty"`
 
-	// The Username or Org name under which Flux v2 will create a repo
-	Owner string `json:"owner,omitempty"`
-
-	// The name of the repository which Flux v2 will create to store gitops configuration
-	Repository string `json:"repository,omitempty"`
-
-	// The kubernetes namespace into which Flux v2 components will be deployed
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-
-	// Path to the kubernetes config for the cluster. Defaults to $HOME/.kube/config
-	// +optional
-	Kubeconfig string `json:"kubeconfig,omitempty"`
-
-	// The name of the branch which Flux will commit to
-	// +optional
-	Branch string `json:"branch,omitempty"`
-
-	// A relative path within the repository. Gitops sync will be scoped to files
-	// under this path
-	// +optional
-	Path string `json:"path,omitempty"`
-
-	// If true, Flux will create the Gitops repo in a personal account.
-	// If false, Flux will create the Gitops repo in an org.
-	// +optional
-	Personal bool `json:"personal,omitempty"`
-
-	// Path to a file containing a Personal Access Token with repo permissions
-	// Not required if GITHUB_TOKEN or GITLAB_TOKEN set on the environment
-	// +optional
-	AuthTokenPath string `json:"authTokenPath,omitempty"`
+	// Flags is an arbitrary map of string to string to pass any flags to Flux bootstrap
+	// via eksctl see https://fluxcd.io/docs/ for information on all flags
+	Flags FluxFlags `json:"flags,omitempty"`
 }
+
+// FluxFlags is a map of string for passing arbitrary flags to Flux bootstrap
+type FluxFlags map[string]string
 
 // Repo groups all configuration options related to a Git repository used for
 // GitOps.
 type Repo struct {
 	// The Git SSH URL to the repository which will contain the cluster configuration
 	// For example: `git@github.com:org/repo`
+	// DEPRECATED
 	URL string `json:"url,omitempty"`
 
 	// The git branch under which cluster configuration files will be committed & pushed, e.g. master
+	// DEPRECATED
 	// +optional
 	Branch string `json:"branch,omitempty"`
 
 	// Relative paths within the Git repository which the GitOps operator will monitor to find Kubernetes manifests to apply, e.g. ["kube-system", "base"]
+	// DEPRECATED
 	//+optional
 	Paths []string `json:"paths,omitempty"`
 
 	// The directory under which Flux configuration files will be written, e.g. flux/
+	// DEPRECATED
 	// +optional
 	FluxPath string `json:"fluxPath,omitempty"`
 
 	// Git user which will be used to commit changes
+	// DEPRECATED
 	// +optional
 	User string `json:"user,omitempty"`
 
 	// Git email which will be used to commit changes
+	// DEPRECATED
 	Email string `json:"email,omitempty"`
 
 	// Path to the private SSH key to use to authenticate
+	// DEPRECATED
 	// +optional
 	PrivateSSHKeyPath string `json:"privateSSHKeyPath,omitempty"`
 }
@@ -981,30 +1020,37 @@ type Repo struct {
 type Operator struct {
 
 	// Commit and push Flux manifests to the Git Repo on install
+	// DEPRECATED
 	// +optional
 	CommitOperatorManifests *bool `json:"commitOperatorManifests,omitempty"`
 
 	// Git label to keep track of Flux's sync progress; this is equivalent to overriding --git-sync-tag and --git-notes-ref in Flux
+	// DEPRECATED
 	// +optional
 	Label string `json:"label,omitempty"`
 
 	// Cluster namespace where to install Flux and the Helm Operator e.g. flux
+	// DEPRECATED
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 
 	// Install the Helm Operator
+	// DEPRECATED
 	// +optional
 	WithHelm *bool `json:"withHelm,omitempty"`
 
 	// Instruct Flux to read-only mode and create the deploy key as read-only
+	// DEPRECATED
 	// +optional
 	ReadOnly bool `json:"readOnly,omitempty"`
 
 	// Additional command line arguments for the Flux daemon
+	// DEPRECATED
 	// +optional
 	AdditionalFluxArgs []string `json:"additionalFluxArgs,omitempty"`
 
 	// Additional command line arguments for the Helm Operator
+	// DEPRECATED
 	// +optional
 	AdditionalHelmOperatorArgs []string `json:"additionalHelmOperatorArgs,omitempty"`
 }
@@ -1012,17 +1058,19 @@ type Operator struct {
 // Profile groups all details on a quickstart profile to enable on the cluster
 // and add to the Git repository.
 type Profile struct {
-
 	// Name or URL of the Quick Start profile
 	// For example: `app-dev`
+	// DEPRECATED.
 	Source string `json:"source,omitempty"`
 
 	// Revision of the Quick Start profile. Can be a branch, tag or commit hash
+	// DEPRECATED.
 	// +optional
 	Revision string `json:"revision,omitempty"`
 
 	// Output directory for the processed profile templates (generate profile command)
 	// Defaults to `./<quickstart-repo-name>`
+	// DEPRECATED.
 	// +optional
 	OutputPath string `json:"outputPath,omitempty"`
 }
@@ -1172,6 +1220,19 @@ type (
 		// +optional
 		Settings *InlineDocument `json:"settings,omitempty"`
 	}
+
+	// NodeGroupUpdateConfig contains the configuration for updating NodeGroups.
+	NodeGroupUpdateConfig struct {
+		// MaxUnavailable sets the max number of nodes that can become unavailable
+		// when updating a nodegroup (specified as number)
+		// +optional
+		MaxUnavailable *int `json:"maxUnavailable,omitempty"`
+
+		// MaxUnavailablePercentage sets the max number of nodes that can become unavailable
+		// when updating a nodegroup (specified as percentage)
+		// +optional
+		MaxUnavailablePercentage *int `json:"maxUnavailablePercentage,omitempty"`
+	}
 )
 
 // MetricsCollection used by the scaling config,
@@ -1200,6 +1261,9 @@ type ScalingConfig struct {
 type NodePool interface {
 	// BaseNodeGroup returns the base nodegroup
 	BaseNodeGroup() *NodeGroupBase
+
+	// NGTaints returns the taints to apply for this nodegroup
+	NGTaints() []NodeGroupTaint
 }
 
 // NodeGroupBase represents the base nodegroup config for self-managed and managed nodegroups
@@ -1319,6 +1383,10 @@ type NodeGroupBase struct {
 	// Some AMIs (bottlerocket) have a separate volume for the OS
 	AdditionalEncryptedVolume string `json:"-"`
 
+	// Bottlerocket specifies settings for Bottlerocket nodes
+	// +optional
+	Bottlerocket *NodeGroupBottlerocket `json:"bottlerocket,omitempty"`
+
 	// TODO remove this
 	// This is a hack, will be removed shortly. When this is true for Ubuntu and
 	// AL2 images a legacy bootstrapper will be used.
@@ -1387,6 +1455,10 @@ type ManagedNodeGroup struct {
 	// Taints taints to apply to the nodegroup
 	Taints []NodeGroupTaint `json:"taints,omitempty"`
 
+	// UpdateConfig configures how to update NodeGroups.
+	// +optional
+	UpdateConfig *NodeGroupUpdateConfig `json:"updateConfig,omitempty"`
+
 	// LaunchTemplate specifies an existing launch template to use
 	// for the nodegroup
 	LaunchTemplate *LaunchTemplate `json:"launchTemplate,omitempty"`
@@ -1413,6 +1485,11 @@ func (m *ManagedNodeGroup) ListOptions() metav1.ListOptions {
 		}
 	}
 	return m.NodeGroupBase.ListOptions()
+}
+
+// NGTaints implements NodePool
+func (m *ManagedNodeGroup) NGTaints() []NodeGroupTaint {
+	return m.Taints
 }
 
 // BaseNodeGroup implements NodePool
@@ -1506,8 +1583,9 @@ type InstanceSelector struct {
 	// Memory specifies the memory
 	// The unit defaults to GiB
 	Memory string `json:"memory,omitempty"`
-	// GPUs specifies the number of GPUs
-	GPUs int `json:"gpus,omitempty"`
+	// GPUs specifies the number of GPUs.
+	// It can be set to 0 to select non-GPU instance types.
+	GPUs *int `json:"gpus,omitempty"`
 	// CPU Architecture of the EC2 instance type.
 	// Valid variants are:
 	// `"x86_64"`

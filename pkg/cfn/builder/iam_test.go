@@ -21,7 +21,7 @@ var _ = Describe("template builder for IAM", func() {
 		)
 
 		BeforeEach(func() {
-			oidc, err = iamoidc.NewOpenIDConnectManager(nil, "456123987123", "https://oidc.eks.us-west-2.amazonaws.com/id/A39A2842863C47208955D753DE205E6E", "aws")
+			oidc, err = iamoidc.NewOpenIDConnectManager(nil, "456123987123", "https://oidc.eks.us-west-2.amazonaws.com/id/A39A2842863C47208955D753DE205E6E", "aws", nil)
 			Expect(err).ToNot(HaveOccurred())
 
 			oidc.ProviderARN = "arn:aws:iam::456123987123:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/A39A2842863C47208955D753DE205E6E"
@@ -253,13 +253,19 @@ var _ = Describe("template builder for IAM", func() {
 			Expect(t).To(HaveOutputWithValue("Role1", `{ "Fn::GetAtt": "Role1.Arn" }`))
 		})
 
-		It("can construct an iamserviceaccount addon template with wellKnownPolicies", func() {
+		It("can construct an iamserviceaccount addon template with all the wellKnownPolicies", func() {
 			serviceAccount := &api.ClusterIAMServiceAccount{}
 
 			serviceAccount.Name = "sa-1"
 
 			serviceAccount.WellKnownPolicies = api.WellKnownPolicies{
-				ImageBuilder: true,
+				ImageBuilder:              true,
+				AutoScaler:                true,
+				AWSLoadBalancerController: true,
+				ExternalDNS:               true,
+				CertManager:               true,
+				EBSCSIController:          true,
+				EFSCSIController:          true,
 			}
 
 			appendServiceAccountToClusterConfig(cfg, serviceAccount)
@@ -276,7 +282,7 @@ var _ = Describe("template builder for IAM", func() {
 
 			Expect(t.Description).To(Equal("IAM role for serviceaccount \"default/sa-1\" [created and managed by eksctl]"))
 
-			Expect(t.Resources).To(HaveLen(1))
+			Expect(t.Resources).To(HaveLen(10))
 			Expect(t.Outputs).To(HaveLen(1))
 
 			Expect(t).To(HaveResource("Role1", "AWS::IAM::Role"))
@@ -319,7 +325,7 @@ var _ = Describe("template builder for IAM", func() {
 		)
 
 		BeforeEach(func() {
-			oidc, err = iamoidc.NewOpenIDConnectManager(nil, "456123987123", "https://oidc.eks.us-west-2.amazonaws.com/id/A39A2842863C47208955D753DE205E6E", "aws")
+			oidc, err = iamoidc.NewOpenIDConnectManager(nil, "456123987123", "https://oidc.eks.us-west-2.amazonaws.com/id/A39A2842863C47208955D753DE205E6E", "aws", nil)
 			Expect(err).ToNot(HaveOccurred())
 
 			oidc.ProviderARN = "arn:aws:iam::456123987123:oidc-provider/oidc.eks.us-west-2.amazonaws.com/id/A39A2842863C47208955D753DE205E6E"

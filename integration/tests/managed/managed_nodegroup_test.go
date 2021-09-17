@@ -1,20 +1,23 @@
+//go:build integration
 // +build integration
 
 package managed
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	awseks "github.com/aws/aws-sdk-go/service/eks"
 	harness "github.com/dlespiau/kube-test-harness"
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/weaveworks/eksctl/pkg/eks"
 
 	. "github.com/weaveworks/eksctl/integration/matchers"
 	. "github.com/weaveworks/eksctl/integration/runner"
@@ -58,6 +61,14 @@ var _ = Describe("(Integration) Create Managed Nodegroups", func() {
 		newPrivateNodeGroup = "ng-private-1"
 	)
 
+	makeClusterConfig := func() *api.ClusterConfig {
+		clusterConfig := api.NewClusterConfig()
+		clusterConfig.Metadata.Name = params.ClusterName
+		clusterConfig.Metadata.Region = params.Region
+		clusterConfig.Metadata.Version = params.Version
+		return clusterConfig
+	}
+
 	defaultTimeout := 20 * time.Minute
 
 	BeforeSuite(func() {
@@ -76,6 +87,140 @@ var _ = Describe("(Integration) Create Managed Nodegroups", func() {
 			"--kubeconfig", params.KubeconfigPath,
 		)
 		Expect(cmd).To(RunSuccessfully())
+	})
+
+	DescribeTable("Bottlerocket and Ubuntu support", func(ng *api.ManagedNodeGroup) {
+		clusterConfig := makeClusterConfig()
+		clusterConfig.ManagedNodeGroups = []*api.ManagedNodeGroup{ng}
+		cmd := params.EksctlCreateCmd.
+			WithArgs(
+				"nodegroup",
+				"--config-file", "-",
+				"--verbose", "4",
+			).
+			WithoutArg("--region", params.Region).
+			WithStdin(testutils.ClusterConfigReader(clusterConfig))
+
+		Expect(cmd).To(RunSuccessfully())
+	},
+		Entry("Bottlerocket", &api.ManagedNodeGroup{
+			NodeGroupBase: &api.NodeGroupBase{
+				Name:       "bottlerocket",
+				VolumeSize: aws.Int(35),
+				AMIFamily:  "Bottlerocket",
+			},
+			Taints: []api.NodeGroupTaint{
+				{
+					Key:    "key2",
+					Value:  "value2",
+					Effect: "PreferNoSchedule",
+				},
+			},
+		}),
+
+		Entry("Ubuntu", &api.ManagedNodeGroup{
+			NodeGroupBase: &api.NodeGroupBase{
+				Name:       "ubuntu",
+				VolumeSize: aws.Int(25),
+				AMIFamily:  "Ubuntu2004",
+			},
+		}),
+	)
+
+	type managedCLIEntry struct {
+		createArgs []string
+
+		expectedErr string
+	}
+
+	DescribeTable("Managed CLI features", func(m managedCLIEntry) {
+		runAssertions := func(createArgs ...string) {
+			cmd := params.EksctlCreateCmd.
+				WithArgs(createArgs...).
+				WithArgs(m.createArgs...)
+
+			if m.expectedErr != "" {
+				session := cmd.Run()
+				Expect(session.ExitCode()).ToNot(Equal(0))
+				output := session.Err.Contents()
+				Expect(string(output)).To(ContainSubstring(m.expectedErr))
+				return
+			}
+
+			Expect(cmd).To(RunSuccessfully())
+		}
+
+		// Run the same assertions for both `create cluster` and `create nodegroup`
+		runAssertions("cluster")
+		runAssertions(
+			"nodegroup",
+			"--cluster", params.ClusterName,
+		)
+	},
+		Entry("Windows AMI", managedCLIEntry{
+			createArgs: []string{
+				"--node-ami-family=WindowsServer2019FullContainer",
+			},
+			expectedErr: "Windows is not supported for managed nodegroups; eksctl now creates " +
+				"managed nodegroups by default, to use a self-managed nodegroup, pass --managed=false",
+		}),
+
+		Entry("Windows AMI with dry-run", managedCLIEntry{
+			createArgs: []string{
+				"--node-ami-family=WindowsServer2019FullContainer",
+				"--dry-run",
+			},
+			expectedErr: "Windows is not supported for managed nodegroups; eksctl now creates " +
+				"managed nodegroups by default, to use a self-managed nodegroup, pass --managed=false",
+		}),
+
+		Entry("Bottlerocket with dry-run", managedCLIEntry{
+			createArgs: []string{
+				"--node-ami-family=Bottlerocket",
+				"--instance-prefix=bottle",
+				"--instance-name=rocket",
+				"--dry-run",
+			},
+		}),
+
+		Entry("Ubuntu with dry-run", managedCLIEntry{
+			createArgs: []string{
+				"--node-ami-family=Ubuntu2004",
+				"--dry-run",
+			},
+		}),
+	)
+
+	Context("Bottlerocket nodegroups", func() {
+		It("should work as a node AMI family", func() {
+			clusterConfig := makeClusterConfig()
+			clusterConfig.ManagedNodeGroups = []*api.ManagedNodeGroup{
+				{
+					NodeGroupBase: &api.NodeGroupBase{
+						Name:       "bottlerocket",
+						VolumeSize: aws.Int(35),
+						AMIFamily:  "Bottlerocket",
+					},
+					Taints: []api.NodeGroupTaint{
+						{
+							Key:    "key1",
+							Value:  "value1",
+							Effect: "PreferNoSchedule",
+						},
+					},
+				},
+			}
+			cmd := params.EksctlCreateCmd.
+				WithArgs(
+					"nodegroup",
+					"--config-file", "-",
+					"--verbose", "4",
+				).
+				WithoutArg("--region", params.Region).
+				WithStdin(testutils.ClusterConfigReader(clusterConfig))
+
+			Expect(cmd).To(RunSuccessfully())
+		})
 	})
 
 	Context("cluster with 1 managed nodegroup", func() {
@@ -302,10 +447,7 @@ var _ = Describe("(Integration) Create Managed Nodegroups", func() {
 						Effect: "NoExecute",
 					},
 				}
-				clusterConfig := api.NewClusterConfig()
-				clusterConfig.Metadata.Name = params.ClusterName
-				clusterConfig.Metadata.Region = params.Region
-				clusterConfig.Metadata.Version = params.Version
+				clusterConfig := makeClusterConfig()
 				clusterConfig.ManagedNodeGroups = []*api.ManagedNodeGroup{
 					{
 						NodeGroupBase: &api.NodeGroupBase{
@@ -315,9 +457,6 @@ var _ = Describe("(Integration) Create Managed Nodegroups", func() {
 					},
 				}
 
-				data, err := json.Marshal(clusterConfig)
-				Expect(err).ToNot(HaveOccurred())
-
 				cmd := params.EksctlCreateCmd.
 					WithArgs(
 						"nodegroup",
@@ -325,7 +464,7 @@ var _ = Describe("(Integration) Create Managed Nodegroups", func() {
 						"--verbose", "4",
 					).
 					WithoutArg("--region", params.Region).
-					WithStdin(bytes.NewReader(data))
+					WithStdin(testutils.ClusterConfigReader(clusterConfig))
 				Expect(cmd).To(RunSuccessfully())
 
 				config, err := clientcmd.BuildConfigFromFlags("", params.KubeconfigPath)
@@ -345,7 +484,70 @@ var _ = Describe("(Integration) Create Managed Nodegroups", func() {
 					return ret
 				}
 
-				tests.AssertNodeTaints(clientset, "taints", mapTaints(taints))
+				tests.AssertNodeTaints(tests.ListNodes(clientset, "taints"), mapTaints(taints))
+			})
+		})
+
+		Context("and creating a nodegroup with an update config", func() {
+			It("defining the UpdateConfig field in the cluster config", func() {
+				By("creating it")
+				updateConfig := &api.NodeGroupUpdateConfig{
+					MaxUnavailable: aws.Int(2),
+				}
+				clusterConfig := makeClusterConfig()
+				clusterConfig.ManagedNodeGroups = []*api.ManagedNodeGroup{
+					{
+						NodeGroupBase: &api.NodeGroupBase{
+							Name: "update-config-ng",
+						},
+						UpdateConfig: updateConfig,
+					},
+				}
+				cmd := params.EksctlCreateCmd.
+					WithArgs(
+						"nodegroup",
+						"--config-file", "-",
+						"--verbose", "4",
+					).
+					WithoutArg("--region", params.Region).
+					WithStdin(testutils.ClusterConfigReader(clusterConfig))
+				Expect(cmd).To(RunSuccessfully())
+
+				clusterProvider, err := eks.New(&api.ProviderConfig{Region: params.Region}, clusterConfig)
+				Expect(err).NotTo(HaveOccurred())
+				ctl := clusterProvider.Provider
+				out, err := ctl.EKS().DescribeNodegroup(&awseks.DescribeNodegroupInput{
+					ClusterName:   &params.ClusterName,
+					NodegroupName: aws.String("update-config-ng"),
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Eventually(out.Nodegroup.UpdateConfig.MaxUnavailable).Should(Equal(aws.Int64(2)))
+
+				By("and updating the nodegroup's UpdateConfig")
+				clusterConfig.ManagedNodeGroups[0].Spot = true
+				clusterConfig.ManagedNodeGroups[0].UpdateConfig = &api.NodeGroupUpdateConfig{
+					MaxUnavailable: aws.Int(1),
+				}
+
+				cmd = params.EksctlUpdateCmd.
+					WithArgs(
+						"nodegroup",
+						"--config-file", "-",
+						"--verbose", "4",
+					).
+					WithoutArg("--region", params.Region).
+					WithStdin(testutils.ClusterConfigReader(clusterConfig))
+
+				Expect(cmd).To(RunSuccessfullyWithOutputStringLines(
+					ContainElement(ContainSubstring("unchanged fields for nodegroup update-config-ng: the following fields remain unchanged; they are not supported by `eksctl update nodegroup`: Spot")),
+				))
+
+				out, err = ctl.EKS().DescribeNodegroup(&awseks.DescribeNodegroupInput{
+					ClusterName:   &params.ClusterName,
+					NodegroupName: aws.String("update-config-ng"),
+				})
+				Expect(err).NotTo(HaveOccurred())
+				Eventually(out.Nodegroup.UpdateConfig.MaxUnavailable).Should(Equal(aws.Int64(1)))
 			})
 		})
 

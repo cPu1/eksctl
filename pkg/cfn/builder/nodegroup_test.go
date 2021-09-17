@@ -8,6 +8,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	gfnt "github.com/weaveworks/goformation/v4/cloudformation/types"
+
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/cfn/builder"
 	"github.com/weaveworks/eksctl/pkg/cfn/builder/fakes"
@@ -15,24 +17,21 @@ import (
 	"github.com/weaveworks/eksctl/pkg/eks/mocks"
 	bootstrapfakes "github.com/weaveworks/eksctl/pkg/nodebootstrap/fakes"
 	vpcfakes "github.com/weaveworks/eksctl/pkg/vpc/fakes"
-	gfnt "github.com/weaveworks/goformation/v4/cloudformation/types"
 )
 
 var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 	var (
-		ngrs                 *builder.NodeGroupResourceSet
-		cfg                  *api.ClusterConfig
-		ng                   *api.NodeGroup
-		supportsManagedNodes bool
-		forceAddCNIPolicy    bool
-		fakeVPCImporter      *vpcfakes.FakeImporter
-		fakeBootstrapper     *bootstrapfakes.FakeBootstrapper
-		mockEC2              = &mocks.EC2API{}
-		mockIAM              = &mocks.IAMAPI{}
+		ngrs              *builder.NodeGroupResourceSet
+		cfg               *api.ClusterConfig
+		ng                *api.NodeGroup
+		forceAddCNIPolicy bool
+		fakeVPCImporter   *vpcfakes.FakeImporter
+		fakeBootstrapper  *bootstrapfakes.FakeBootstrapper
+		mockEC2           = &mocks.EC2API{}
+		mockIAM           = &mocks.IAMAPI{}
 	)
 
 	BeforeEach(func() {
-		supportsManagedNodes = false
 		forceAddCNIPolicy = false
 		fakeVPCImporter = new(vpcfakes.FakeImporter)
 		fakeBootstrapper = new(bootstrapfakes.FakeBootstrapper)
@@ -40,8 +39,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 	})
 
 	JustBeforeEach(func() {
-		ngrs = builder.NewNodeGroupResourceSet(mockEC2, mockIAM, cfg, ng, supportsManagedNodes, forceAddCNIPolicy, fakeVPCImporter)
-		ngrs.SetBootstrapper(fakeBootstrapper)
+		ngrs = builder.NewNodeGroupResourceSet(mockEC2, mockIAM, cfg, ng, fakeBootstrapper, forceAddCNIPolicy, fakeVPCImporter)
 	})
 
 	Describe("AddAllResources", func() {
@@ -194,7 +192,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 			})
 		})
 
-		Context("neither iam.InstanceRoleARN or ng.InstanceProfileARN are set", func() {
+		Context("neither iam.InstanceRoleARN or ng.InstanceProfileARN is set", func() {
 			It("creates a new role", func() {
 				Expect(ngTemplate.Resources).To(HaveKey("NodeInstanceRole"))
 				Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.Path).To(Equal("/"))
@@ -255,10 +253,13 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 				})
 
 				It("adds the default policies to the role", func() {
-					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(3))
+					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(4))
+
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEC2ContainerRegistryReadOnly")))
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEKSWorkerNodePolicy")))
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEKS_CNI_Policy")))
+					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEKS_CNI_Policy")))
+					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonSSMManagedInstanceCore")))
 				})
 
 				Context("forceAddCNIPolicy is true", func() {
@@ -267,7 +268,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 					})
 
 					It("adds the AmazonEKS_CNI_Policy", func() {
-						Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(3))
+						Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(4))
 						Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEKS_CNI_Policy")))
 					})
 				})
@@ -278,23 +279,9 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 					})
 
 					It("does not add the AmazonEKS_CNI_Policy", func() {
-						Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(2))
+						Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(3))
 						Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).ToNot(ContainElement(makePolicyARNRef("AmazonEKS_CNI_Policy")))
 					})
-				})
-			})
-
-			Context("ssm is enabled", func() {
-				BeforeEach(func() {
-					ng.SSH = &api.NodeGroupSSH{
-						Allow:     aws.Bool(true),
-						EnableSSM: aws.Bool(true),
-					}
-				})
-
-				It("adds the AmazonSSMManagedInstanceCore arn to the role", func() {
-					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(4))
-					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonSSMManagedInstanceCore")))
 				})
 			})
 
@@ -304,7 +291,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 				})
 
 				It("adds the AmazonSSMManagedInstanceCore arn to the role", func() {
-					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(3))
+					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(4))
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("AmazonEC2ContainerRegistryPowerUser")))
 				})
 			})
@@ -315,7 +302,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 				})
 
 				It("adds the AmazonSSMManagedInstanceCore arn to the role", func() {
-					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(4))
+					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(5))
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("CloudWatchAgentServerPolicy")))
 				})
 			})
@@ -326,7 +313,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 				})
 
 				It("adds the AmazonSSMManagedInstanceCore arn to the role", func() {
-					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(4))
+					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(HaveLen(5))
 					Expect(ngTemplate.Resources["NodeInstanceRole"].Properties.ManagedPolicyArns).To(ContainElement(makePolicyARNRef("CloudWatchAgentServerPolicy")))
 				})
 			})
@@ -608,13 +595,16 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 				Expect(properties.LaunchTemplateData.InstanceType).To(Equal("m5.large"))
 				Expect(properties.LaunchTemplateData.MetadataOptions.HTTPPutResponseHopLimit).To(Equal(float64(2)))
 				Expect(properties.LaunchTemplateData.MetadataOptions.HTTPTokens).To(Equal("optional"))
-				Expect(properties.LaunchTemplateData.TagSpecifications).To(HaveLen(2))
+				Expect(properties.LaunchTemplateData.TagSpecifications).To(HaveLen(3))
 				Expect(properties.LaunchTemplateData.TagSpecifications[0].ResourceType).To(Equal(aws.String("instance")))
 				Expect(properties.LaunchTemplateData.TagSpecifications[0].Tags[0].Key).To(Equal("Name"))
 				Expect(properties.LaunchTemplateData.TagSpecifications[0].Tags[0].Value).To(Equal("bonsai-ng-abcd1234-Node"))
 				Expect(properties.LaunchTemplateData.TagSpecifications[1].ResourceType).To(Equal(aws.String("volume")))
 				Expect(properties.LaunchTemplateData.TagSpecifications[1].Tags[0].Key).To(Equal("Name"))
 				Expect(properties.LaunchTemplateData.TagSpecifications[1].Tags[0].Value).To(Equal("bonsai-ng-abcd1234-Node"))
+				Expect(properties.LaunchTemplateData.TagSpecifications[2].ResourceType).To(Equal(aws.String("network-interface")))
+				Expect(properties.LaunchTemplateData.TagSpecifications[2].Tags[0].Key).To(Equal("Name"))
+				Expect(properties.LaunchTemplateData.TagSpecifications[2].Tags[0].Value).To(Equal("bonsai-ng-abcd1234-Node"))
 			})
 
 			Context("creating userdata fails", func() {
@@ -1055,9 +1045,57 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 		})
 
 		It("returns public subnets", func() {
-			subnets, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg)
+			subnets, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(subnets).To(Equal(gfnt.NewString("subnet-1")))
+		})
+
+		It("returns subnets if they exist and were defined by ID only", func() {
+			mockEC2 = &mocks.EC2API{}
+			mockEC2.On("DescribeSubnets", &ec2.DescribeSubnetsInput{
+				SubnetIds: aws.StringSlice([]string{"fake-id"}),
+			}).Return(&ec2.DescribeSubnetsOutput{
+				Subnets: []*ec2.Subnet{
+					{
+						SubnetId: aws.String("fake-id"),
+						VpcId:    aws.String(cfg.VPC.ID),
+					},
+				},
+			}, nil)
+			ngBase := ngBase.DeepCopy()
+			ngBase.Subnets = []string{"fake-id"}
+			subnets, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg, mockEC2)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(subnets).To(Equal(gfnt.NewStringSlice("fake-id")))
+		})
+
+		It("returns an error if the given subnet is not part of the cluster's VPC", func() {
+			mockEC2 = &mocks.EC2API{}
+			mockEC2.On("DescribeSubnets", &ec2.DescribeSubnetsInput{
+				SubnetIds: aws.StringSlice([]string{"fake-id"}),
+			}).Return(&ec2.DescribeSubnetsOutput{
+				Subnets: []*ec2.Subnet{
+					{
+						SubnetId: aws.String("fake-id"),
+						VpcId:    aws.String("invalid-vpc-id"),
+					},
+				},
+			}, nil)
+			ngBase := ngBase.DeepCopy()
+			ngBase.Subnets = []string{"fake-id"}
+			_, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg, mockEC2)
+			Expect(err).To(MatchError(ContainSubstring("subnet with id \"fake-id\" is not in the attached vpc with id \"\"")))
+		})
+
+		It("returns an error if ec2 api returns an error", func() {
+			mockEC2 = &mocks.EC2API{}
+			mockEC2.On("DescribeSubnets", &ec2.DescribeSubnetsInput{
+				SubnetIds: aws.StringSlice([]string{"fake-id"}),
+			}).Return(nil, errors.New("nope"))
+			ngBase := ngBase.DeepCopy()
+			ngBase.Subnets = []string{"fake-id"}
+			_, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg, mockEC2)
+			Expect(err).To(MatchError(ContainSubstring("nope")))
 		})
 
 		Context("when private networking is enabled", func() {
@@ -1067,7 +1105,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 			})
 
 			It("returns private subnets", func() {
-				subnets, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg)
+				subnets, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(subnets).To(Equal(gfnt.NewString("subnet-2")))
 			})
@@ -1080,7 +1118,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 			})
 
 			It("maps subnets to azs", func() {
-				subnets, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg)
+				subnets, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(subnets).To(Equal(gfnt.NewStringSlice(publicSubnet1, publicSubnet2)))
 			})
@@ -1092,7 +1130,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 				})
 
 				It("maps private subnets to azs", func() {
-					subnets, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg)
+					subnets, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg, nil)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(subnets).To(Equal(gfnt.NewStringSlice(privateSubnet1, privateSubnet2)))
 				})
@@ -1104,7 +1142,11 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 				})
 
 				It("returns the error", func() {
-					_, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg)
+					mockEC2 = &mocks.EC2API{}
+					mockEC2.On("DescribeSubnets", &ec2.DescribeSubnetsInput{
+						SubnetIds: aws.StringSlice([]string{"not-a-thing"}),
+					}).Return(nil, errors.New("nope"))
+					_, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg, mockEC2)
 					Expect(err).To(MatchError(ContainSubstring("couldn't find public subnets")))
 				})
 			})
@@ -1117,7 +1159,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 			})
 
 			It("choses only the first subnet", func() {
-				subnets, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg)
+				subnets, err := builder.AssignSubnets(ngBase, fakeVPCImporter, cfg, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(subnets).To(Equal(gfnt.NewStringSlice(publicSubnet1)))
 			})

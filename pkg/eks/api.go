@@ -43,6 +43,9 @@ import (
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/az"
 	"github.com/weaveworks/eksctl/pkg/cfn/manager"
+	ekscreds "github.com/weaveworks/eksctl/pkg/credentials"
+	"github.com/weaveworks/eksctl/pkg/kubernetes"
+	kubewrapper "github.com/weaveworks/eksctl/pkg/kubernetes"
 	"github.com/weaveworks/eksctl/pkg/utils"
 	"github.com/weaveworks/eksctl/pkg/version"
 )
@@ -53,6 +56,18 @@ type ClusterProvider struct {
 	Provider api.ClusterProvider
 	// informative fields, i.e. used as outputs
 	Status *ProviderStatus
+}
+
+//counterfeiter:generate -o fakes/fake_kube_provider.go . KubeProvider
+// KubeProvider is an interface with helper funcs for k8s and EKS that are part of ClusterProvider
+type KubeProvider interface {
+	NewRawClient(spec *api.ClusterConfig) (*kubewrapper.RawClient, error)
+	ServerVersion(rawClient *kubernetes.RawClient) (string, error)
+	LoadClusterIntoSpecFromStack(spec *api.ClusterConfig, stackManager manager.StackManager) error
+	SupportsManagedNodes(clusterConfig *api.ClusterConfig) (bool, error)
+	ValidateClusterForCompatibility(cfg *api.ClusterConfig, stackManager manager.StackManager) error
+	UpdateAuthConfigMap(nodeGroups []*api.NodeGroup, clientSet kubernetes.Interface) error
+	WaitForNodes(clientSet kubernetes.Interface, ng KubeNodeGroup) error
 }
 
 // ProviderServices stores the used APIs
@@ -146,6 +161,15 @@ func New(spec *api.ProviderConfig, clusterSpec *api.ClusterConfig) (*ClusterProv
 	// Create a new session and save credentials for possible
 	// later re-use if overriding sessions due to custom URL
 	s := c.newSession(spec)
+
+	cache := os.Getenv(ekscreds.EksctlGlobalEnableCachingEnvName)
+	if s.Config != nil && cache != "" {
+		if cachedProvider, err := ekscreds.NewFileCacheProvider(spec.Profile, s.Config.Credentials, &ekscreds.RealClock{}); err == nil {
+			s.Config.Credentials = credentials.NewCredentials(&cachedProvider)
+		} else {
+			logger.Warning("Failed to use cached provider: ", err)
+		}
+	}
 
 	provider.session = s
 	provider.asg = autoscaling.New(s)
@@ -299,8 +323,9 @@ func (c *ClusterProvider) checkAuth() error {
 }
 
 // ResolveAMI ensures that the node AMI is set and is available
-func ResolveAMI(provider api.ClusterProvider, version string, ng *api.NodeGroup) error {
+func ResolveAMI(provider api.ClusterProvider, version string, np api.NodePool) error {
 	var resolver ami.Resolver
+	ng := np.BaseNodeGroup()
 	switch ng.AMI {
 	case api.NodeImageResolverAuto:
 		resolver = ami.NewAutoResolver(provider.EC2())
@@ -315,7 +340,7 @@ func ResolveAMI(provider api.ClusterProvider, version string, ng *api.NodeGroup)
 		return errors.Errorf("invalid AMI value: %q", ng.AMI)
 	}
 
-	instanceType := selectInstanceType(ng)
+	instanceType := SelectInstanceType(np)
 	id, err := resolver.Resolve(provider.Region(), version, instanceType, ng.AMIFamily)
 	if err != nil {
 		return errors.Wrap(err, "unable to determine AMI to use")
@@ -327,19 +352,31 @@ func ResolveAMI(provider api.ClusterProvider, version string, ng *api.NodeGroup)
 	return nil
 }
 
-// selectInstanceType determines which instanceType is relevant for selecting an AMI
+// SelectInstanceType determines which instanceType is relevant for selecting an AMI
 // If the nodegroup has mixed instances it will prefer a GPU instance type over a general class one
 // This is to make sure that the AMI that is selected later is valid for all the types
-func selectInstanceType(ng *api.NodeGroup) string {
-	if api.HasMixedInstances(ng) {
-		for _, instanceType := range ng.InstancesDistribution.InstanceTypes {
+func SelectInstanceType(np api.NodePool) string {
+	var instanceTypes []string
+	switch ng := np.(type) {
+	case *api.NodeGroup:
+		if ng.InstancesDistribution != nil {
+			instanceTypes = ng.InstancesDistribution.InstanceTypes
+		}
+	case *api.ManagedNodeGroup:
+		instanceTypes = ng.InstanceTypes
+	}
+
+	hasMixedInstances := len(instanceTypes) > 0
+	if hasMixedInstances {
+		for _, instanceType := range instanceTypes {
 			if utils.IsGPUInstanceType(instanceType) {
 				return instanceType
 			}
 		}
-		return ng.InstancesDistribution.InstanceTypes[0]
+		return instanceTypes[0]
 	}
-	return ng.InstanceType
+
+	return np.BaseNodeGroup().InstanceType
 }
 
 func errTooFewAvailabilityZones(azs []string) error {
@@ -364,11 +401,14 @@ func (c *ClusterProvider) SetAvailabilityZones(spec *api.ClusterConfig, given []
 	}
 
 	logger.Debug("determining availability zones")
-	azSelector := az.NewSelectorWithDefaults(c.Provider.EC2())
+	var azSelector *az.AvailabilityZoneSelector
 	if c.Provider.Region() == api.RegionUSEast1 {
-		azSelector = az.NewSelectorWithMinRequired(c.Provider.EC2())
+		azSelector = az.NewSelectorWithMinRequired(c.Provider.EC2(), c.Provider.Region())
+	} else {
+		azSelector = az.NewSelectorWithDefaults(c.Provider.EC2(), c.Provider.Region())
 	}
-	zones, err := azSelector.SelectZones(c.Provider.Region())
+
+	zones, err := azSelector.SelectZones()
 	if err != nil {
 		return errors.Wrap(err, "getting availability zones")
 	}

@@ -59,7 +59,7 @@ func (b UbuntuBootstrapper) UserData() (string, error) {
 }
 
 func makeUbuntuConfig(spec *api.ClusterConfig, ng *api.NodeGroup) ([]configFile, error) {
-	clientConfigData, err := makeClientConfigData(spec, kubeconfig.HeptioAuthenticatorAWS)
+	clientConfigData, err := makeClientConfigData(spec, kubeconfig.AWSEKSAuthenticator)
 	if err != nil {
 		return nil, err
 	}
@@ -68,9 +68,11 @@ func makeUbuntuConfig(spec *api.ClusterConfig, ng *api.NodeGroup) ([]configFile,
 		return nil, errors.New("invalid cluster config: missing CertificateAuthorityData")
 	}
 
-	kubeletEnvParams := append(makeCommonKubeletEnvParams(ng),
-		fmt.Sprintf("CLUSTER_DNS=%s", clusterDNS(spec, ng)),
-	)
+	kubeletEnvParams := makeCommonKubeletEnvParams(ng)
+
+	if ng.ClusterDNS != "" {
+		kubeletEnvParams = append(kubeletEnvParams, fmt.Sprintf("CLUSTER_DNS=%s", ng.ClusterDNS))
+	}
 
 	// Set resolvConf for Ubuntu 20.04 only, do not override user set value
 	if ng.AMIFamily == api.NodeImageFamilyUbuntu2004 {
@@ -83,11 +85,6 @@ func makeUbuntuConfig(spec *api.ClusterConfig, ng *api.NodeGroup) ([]configFile,
 	}
 
 	kubeletConfigData, err := makeKubeletConfigYAML(spec, ng)
-	if err != nil {
-		return nil, err
-	}
-
-	dockerConfigData, err := makeDockerConfigJSON()
 	if err != nil {
 		return nil, err
 	}
@@ -116,10 +113,6 @@ func makeUbuntuConfig(spec *api.ClusterConfig, ng *api.NodeGroup) ([]configFile,
 		dir:      configDir,
 		name:     "max_pods.map",
 		contents: makeMaxPodsMapping(),
-	}, {
-		dir:      dockerConfigDir,
-		name:     "daemon.json",
-		contents: dockerConfigData,
 	}}
 
 	return files, nil
