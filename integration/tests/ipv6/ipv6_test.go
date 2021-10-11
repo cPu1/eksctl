@@ -27,10 +27,10 @@ var params *tests.Params
 func init() {
 	// Call testing.Init() prior to tests.NewParams(), as otherwise -test.* will not be recognised. See also: https://golang.org/doc/go1.13#testing
 	testing.Init()
-	params = tests.NewParams("addons")
+	params = tests.NewParams("IPv6")
 }
 
-func TestEKSAddons(t *testing.T) {
+func TestIPv6(t *testing.T) {
 	testutils.RegisterAndRun(t)
 }
 
@@ -44,8 +44,19 @@ var _ = Describe("(Integration) [EKS IPv6 test]", func() {
 			clusterConfig.Metadata.Name = clusterName
 			clusterConfig.Metadata.Version = "latest"
 			clusterConfig.Metadata.Region = params.Region
-			clusterConfig.VPC.IPFamily = aws.String("ipv6")
+			clusterConfig.VPC.IPFamily = aws.String("IPv6")
 			clusterConfig.IAM.WithOIDC = api.Enabled()
+			clusterConfig.Addons = []*api.Addon{
+				{
+					Name: "vpc-cni",
+				},
+				{
+					Name: "kube-proxy",
+				},
+				{
+					Name: "coredns",
+				},
+			}
 
 			data, err := json.Marshal(clusterConfig)
 			Expect(err).ToNot(HaveOccurred())
@@ -82,7 +93,7 @@ var _ = Describe("(Integration) [EKS IPv6 test]", func() {
 
 			var vpcID string
 			for _, output := range describeStackOut.Stacks[0].Outputs {
-				if *output.OutputKey == "VpcId" {
+				if *output.OutputKey == "VPC" {
 					vpcID = *output.OutputValue
 				}
 			}

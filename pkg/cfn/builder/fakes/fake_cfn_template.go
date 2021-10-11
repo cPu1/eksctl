@@ -63,7 +63,8 @@ type Properties struct {
 	EgressOnlyInternetGatewayID, RouteTableID, AllocationID interface{}
 	GatewayID, InternetGatewayID, NatGatewayID              interface{}
 	DestinationCidrBlock, DestinationIpv6CidrBlock          interface{}
-	MapPublicIPOnLaunch, AssignIpv6AddressOnCreation        bool
+	MapPublicIPOnLaunch                                     bool
+	AssignIpv6AddressOnCreation                             *bool
 
 	Ipv6CidrBlock map[string][]interface{}
 	CidrBlock     interface{}

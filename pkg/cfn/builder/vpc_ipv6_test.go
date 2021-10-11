@@ -23,14 +23,27 @@ var _ = Describe("IPv6 VPC builder", func() {
 	BeforeEach(func() {
 		cfg = api.NewClusterConfig()
 		cfg.VPC.IPFamily = aws.String("ipv6")
-		cfg.AvailabilityZones = []string{azA, azB}
-		//TODO: do we need to test with 3 AZs?
-
-		vpcRs = builder.NewIPv6VPCResourceSet(builder.NewRS(), cfg, nil)
 	})
 
 	It("creates the ipv6 VPC and its resources", func() {
-		Expect(vpcRs.AddResources()).Should(Succeed())
+		cfg.AvailabilityZones = []string{azA, azB}
+		vpcRs = builder.NewIPv6VPCResourceSet(builder.NewRS(), cfg, nil)
+
+		_, subnetDetails, err := vpcRs.CreateTemplate()
+		Expect(err).NotTo(HaveOccurred())
+
+		By("returning the references of public subnets")
+		pubRefs := subnetDetails.PublicSubnetRefs()
+		Expect(pubRefs).To(HaveLen(2))
+		Expect(pubRefs).To(ContainElement(makePrimitive(builder.PublicSubnetKey + azAFormatted)))
+		Expect(pubRefs).To(ContainElement(makePrimitive(builder.PublicSubnetKey + azBFormatted)))
+
+		By("returning the references of private subnets")
+		privRef := subnetDetails.PrivateSubnetRefs()
+		Expect(privRef).To(HaveLen(2))
+		Expect(privRef).To(ContainElement(makePrimitive(builder.PrivateSubnetKey + azBFormatted)))
+		Expect(privRef).To(ContainElement(makePrimitive(builder.PrivateSubnetKey + azBFormatted)))
+
 		vpcTemplate = &fakes.FakeTemplate{}
 		templateBody, err := vpcRs.RenderJSON()
 		Expect(err).ShouldNot(HaveOccurred())
@@ -39,8 +52,10 @@ var _ = Describe("IPv6 VPC builder", func() {
 		By("creating the VPC resource")
 		Expect(vpcTemplate.Resources).To(HaveKey(builder.VPCResourceKey))
 		Expect(vpcTemplate.Resources[builder.VPCResourceKey].Type).To(Equal("AWS::EC2::VPC"))
+		defaultCidr := api.DefaultCIDR()
+		cidr := &defaultCidr
 		Expect(vpcTemplate.Resources[builder.VPCResourceKey].Properties).To(Equal(fakes.Properties{
-			CidrBlock:          api.DefaultCIDR().IP.String(),
+			CidrBlock:          cidr.String(),
 			EnableDnsHostnames: true,
 			EnableDnsSupport:   true,
 			Tags: []fakes.Tag{
@@ -139,7 +154,7 @@ var _ = Describe("IPv6 VPC builder", func() {
 		Expect(vpcTemplate.Resources[builder.PubSubRouteKey].DependsOn).To(ConsistOf(builder.GAKey))
 		Expect(vpcTemplate.Resources[builder.PubSubRouteKey].Properties).To(Equal(fakes.Properties{
 			DestinationCidrBlock: builder.InternetCIDR,
-			GatewayID:            map[string]interface{}{"Ref": builder.GAKey},
+			GatewayID:            map[string]interface{}{"Ref": builder.IGWKey},
 			RouteTableID:         map[string]interface{}{"Ref": builder.PubRouteTableKey},
 		}))
 
@@ -150,7 +165,7 @@ var _ = Describe("IPv6 VPC builder", func() {
 		Expect(vpcTemplate.Resources[builder.PubSubIPv6RouteKey].DependsOn).To(ConsistOf(builder.GAKey))
 		Expect(vpcTemplate.Resources[builder.PubSubIPv6RouteKey].Properties).To(Equal(fakes.Properties{
 			DestinationIpv6CidrBlock: builder.InternetIPv6CIDR,
-			GatewayID:                map[string]interface{}{"Ref": builder.GAKey},
+			GatewayID:                map[string]interface{}{"Ref": builder.IGWKey},
 			RouteTableID:             map[string]interface{}{"Ref": builder.PubRouteTableKey},
 		}))
 
@@ -220,14 +235,13 @@ var _ = Describe("IPv6 VPC builder", func() {
 		}))
 
 		By("creating a public and private subnet for each AZ")
-		assertSubnetSet := func(az, subnetKey, kubernetesTag string, cidrBlockIndex float64, mapPublicIpOnLaunch, assignIPv6 bool) {
+		assertSubnetSet := func(az, subnetKey, kubernetesTag string, cidrBlockIndex float64, mapPublicIpOnLaunch bool) {
 			Expect(vpcTemplate.Resources).To(HaveKey(subnetKey))
 			Expect(vpcTemplate.Resources[subnetKey].Type).To(Equal("AWS::EC2::Subnet"))
 			Expect(vpcTemplate.Resources[subnetKey].DependsOn).To(ConsistOf(builder.IPv6CIDRBlockKey))
-
 			Expect(vpcTemplate.Resources[subnetKey].Properties.AvailabilityZone).To(Equal(az))
 			Expect(vpcTemplate.Resources[subnetKey].Properties.MapPublicIPOnLaunch).To(Equal(mapPublicIpOnLaunch))
-			Expect(vpcTemplate.Resources[subnetKey].Properties.AssignIpv6AddressOnCreation).To(Equal(assignIPv6))
+
 			Expect(vpcTemplate.Resources[subnetKey].Properties.VpcID).To(Equal(map[string]interface{}{"Ref": "VPC"}))
 			Expect(vpcTemplate.Resources[subnetKey].Properties.Tags).To(ConsistOf(
 				fakes.Tag{
@@ -240,25 +254,29 @@ var _ = Describe("IPv6 VPC builder", func() {
 				},
 			))
 
-			expectedFnIPv4CIDR := `{ "Fn::Cidr": [{ "Fn::GetAtt": ["VPC", "CidrBlocks"]}, 4, 14 ]}`
+			expectedFnIPv4CIDR := `{ "Fn::Cidr": [{ "Fn::GetAtt": ["VPC", "CidrBlock"]}, 6, 13 ]}`
 			Expect(vpcTemplate.Resources[subnetKey].Properties.CidrBlock.(map[string]interface{})["Fn::Select"]).To(HaveLen(2))
 			Expect(vpcTemplate.Resources[subnetKey].Properties.CidrBlock.(map[string]interface{})["Fn::Select"].([]interface{})[0].(float64)).To(Equal(cidrBlockIndex))
 			actualFnCIDR, err := json.Marshal(vpcTemplate.Resources[subnetKey].Properties.CidrBlock.(map[string]interface{})["Fn::Select"].([]interface{})[1])
 			Expect(err).NotTo(HaveOccurred())
 			Expect(actualFnCIDR).To(MatchJSON([]byte(expectedFnIPv4CIDR)))
 
-			expectedFnIPv6CIDR := `{ "Fn::Cidr": [{ "Fn::Select": [ 0, { "Fn::GetAtt": ["VPC", "Ipv6CidrBlocks"] }]}, 8, 64 ]}`
+			expectedFnIPv6CIDR := `{ "Fn::Cidr": [{ "Fn::Select": [ 0, { "Fn::GetAtt": ["VPC", "Ipv6CidrBlocks"] }]}, 6, 64 ]}`
 			Expect(vpcTemplate.Resources[subnetKey].Properties.Ipv6CidrBlock["Fn::Select"]).To(HaveLen(2))
 			Expect(vpcTemplate.Resources[subnetKey].Properties.Ipv6CidrBlock["Fn::Select"][0].(float64)).To(Equal(cidrBlockIndex))
 			actualFnIPv6CIDR, err := json.Marshal(vpcTemplate.Resources[subnetKey].Properties.Ipv6CidrBlock["Fn::Select"][1])
 			Expect(err).NotTo(HaveOccurred())
 			Expect(actualFnIPv6CIDR).To(MatchJSON([]byte(expectedFnIPv6CIDR)))
 		}
-		assertSubnetSet(azA, builder.PublicSubnetKey+azAFormatted, "kubernetes.io/role/elb", float64(0), true, false)
-		assertSubnetSet(azB, builder.PublicSubnetKey+azBFormatted, "kubernetes.io/role/elb", float64(1), true, false)
+		assertSubnetSet(azA, builder.PublicSubnetKey+azAFormatted, "kubernetes.io/role/elb", float64(0), true)
+		Expect(vpcTemplate.Resources[builder.PublicSubnetKey+azAFormatted].Properties.AssignIpv6AddressOnCreation).To(BeNil())
+		assertSubnetSet(azB, builder.PublicSubnetKey+azBFormatted, "kubernetes.io/role/elb", float64(1), true)
+		Expect(vpcTemplate.Resources[builder.PublicSubnetKey+azBFormatted].Properties.AssignIpv6AddressOnCreation).To(BeNil())
 
-		assertSubnetSet(azA, builder.PrivateSubnetKey+azAFormatted, "kubernetes.io/role/internal-elb", float64(2), false, true)
-		assertSubnetSet(azB, builder.PrivateSubnetKey+azBFormatted, "kubernetes.io/role/internal-elb", float64(3), false, true)
+		assertSubnetSet(azA, builder.PrivateSubnetKey+azAFormatted, "kubernetes.io/role/internal-elb", float64(2), false)
+		Expect(*vpcTemplate.Resources[builder.PrivateSubnetKey+azAFormatted].Properties.AssignIpv6AddressOnCreation).To(Equal(true))
+		assertSubnetSet(azB, builder.PrivateSubnetKey+azBFormatted, "kubernetes.io/role/internal-elb", float64(3), false)
+		Expect(*vpcTemplate.Resources[builder.PrivateSubnetKey+azAFormatted].Properties.AssignIpv6AddressOnCreation).To(Equal(true))
 
 		By("creating route table associations", func() {
 			assertSubnetRouteTableAssociation := func(routeTableAssociationKey, subnetKey, routeTableKey string) {
@@ -324,5 +342,45 @@ var _ = Describe("IPv6 VPC builder", func() {
 			},
 		}))
 
+	})
+
+	Context("when there are 3 AZs", func() {
+		It("scales the CIDR blocks accordingly", func() {
+			cfg.AvailabilityZones = []string{azA, azB, azC}
+			vpcRs = builder.NewIPv6VPCResourceSet(builder.NewRS(), cfg, nil)
+
+			_, _, err := vpcRs.CreateTemplate()
+			Expect(err).NotTo(HaveOccurred())
+
+			vpcTemplate = &fakes.FakeTemplate{}
+			templateBody, err := vpcRs.RenderJSON()
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(json.Unmarshal(templateBody, vpcTemplate)).To(Succeed())
+
+			assertSubnetSet := func(az, subnetKey string, cidrBlockIndex float64) {
+				Expect(vpcTemplate.Resources).To(HaveKey(subnetKey))
+				expectedFnIPv4CIDR := `{ "Fn::Cidr": [{ "Fn::GetAtt": ["VPC", "CidrBlock"]}, 8, 13 ]}`
+				Expect(vpcTemplate.Resources[subnetKey].Properties.CidrBlock.(map[string]interface{})["Fn::Select"]).To(HaveLen(2))
+				Expect(vpcTemplate.Resources[subnetKey].Properties.CidrBlock.(map[string]interface{})["Fn::Select"].([]interface{})[0].(float64)).To(Equal(cidrBlockIndex))
+				actualFnCIDR, err := json.Marshal(vpcTemplate.Resources[subnetKey].Properties.CidrBlock.(map[string]interface{})["Fn::Select"].([]interface{})[1])
+				Expect(err).NotTo(HaveOccurred())
+				Expect(actualFnCIDR).To(MatchJSON([]byte(expectedFnIPv4CIDR)))
+
+				expectedFnIPv6CIDR := `{ "Fn::Cidr": [{ "Fn::Select": [ 0, { "Fn::GetAtt": ["VPC", "Ipv6CidrBlocks"] }]}, 8, 64 ]}`
+				Expect(vpcTemplate.Resources[subnetKey].Properties.Ipv6CidrBlock["Fn::Select"]).To(HaveLen(2))
+				Expect(vpcTemplate.Resources[subnetKey].Properties.Ipv6CidrBlock["Fn::Select"][0].(float64)).To(Equal(cidrBlockIndex))
+				actualFnIPv6CIDR, err := json.Marshal(vpcTemplate.Resources[subnetKey].Properties.Ipv6CidrBlock["Fn::Select"][1])
+				Expect(err).NotTo(HaveOccurred())
+				Expect(actualFnIPv6CIDR).To(MatchJSON([]byte(expectedFnIPv6CIDR)))
+			}
+			assertSubnetSet(azA, builder.PublicSubnetKey+azAFormatted, float64(0))
+			assertSubnetSet(azB, builder.PublicSubnetKey+azBFormatted, float64(1))
+			assertSubnetSet(azC, builder.PublicSubnetKey+azCFormatted, float64(2))
+
+			assertSubnetSet(azA, builder.PrivateSubnetKey+azAFormatted, float64(3))
+			assertSubnetSet(azB, builder.PrivateSubnetKey+azBFormatted, float64(4))
+			assertSubnetSet(azC, builder.PrivateSubnetKey+azCFormatted, float64(5))
+
+		})
 	})
 })

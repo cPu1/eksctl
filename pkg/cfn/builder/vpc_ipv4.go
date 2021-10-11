@@ -28,14 +28,8 @@ type IPv4VPCResourceSet struct {
 	rs            *resourceSet
 	clusterConfig *api.ClusterConfig
 	ec2API        ec2iface.EC2API
-
-	vpcResource *IPv4VPCResource
-}
-
-// IPv4VPCResource represents a VPC resource
-type IPv4VPCResource struct {
-	VPC           *gfnt.Value
-	SubnetDetails *subnetDetails
+	vpcID         *gfnt.Value
+	subnetDetails *SubnetDetails
 }
 
 type SubnetResource struct {
@@ -44,7 +38,7 @@ type SubnetResource struct {
 	AvailabilityZone string
 }
 
-type subnetDetails struct {
+type SubnetDetails struct {
 	Private []SubnetResource
 	Public  []SubnetResource
 }
@@ -66,46 +60,52 @@ func NewIPv4VPCResourceSet(rs *resourceSet, clusterConfig *api.ClusterConfig, ec
 		rs:            rs,
 		clusterConfig: clusterConfig,
 		ec2API:        ec2API,
-
-		vpcResource: &IPv4VPCResource{
-			VPC:           vpcRef,
-			SubnetDetails: &subnetDetails{},
-		},
+		vpcID:         vpcRef,
+		subnetDetails: &SubnetDetails{},
 	}
 }
 
+func (v *IPv4VPCResourceSet) CreateTemplate() (*gfnt.Value, *SubnetDetails, error) {
+	err := v.addResources()
+	if err != nil {
+		return nil, nil, err
+	}
+	v.addOutputs()
+	return v.vpcID, v.subnetDetails, nil
+}
+
 // AddResources adds all required resources
-func (v *IPv4VPCResourceSet) AddResources() (*IPv4VPCResource, error) {
+func (v *IPv4VPCResourceSet) addResources() error {
 	vpc := v.clusterConfig.VPC
 	if vpc.ID != "" { // custom VPC has been set
 		if err := v.importResources(); err != nil {
-			return nil, errors.Wrap(err, "error importing VPC resources")
+			return errors.Wrap(err, "error importing VPC resources")
 		}
-		return v.vpcResource, nil
+		return nil
 	}
 
 	if api.IsEnabled(vpc.AutoAllocateIPv6) {
 		v.rs.newResource("AutoAllocatedCIDRv6", &gfnec2.VPCCidrBlock{
-			VpcId:                       v.vpcResource.VPC,
+			VpcId:                       v.vpcID,
 			AmazonProvidedIpv6CidrBlock: gfnt.True(),
 		})
 	}
 
 	if v.isFullyPrivate() {
 		v.noNAT()
-		v.vpcResource.SubnetDetails.Private = v.addSubnets(nil, api.SubnetTopologyPrivate, vpc.Subnets.Private)
-		return v.vpcResource, nil
+		v.subnetDetails.Private = v.addSubnets(nil, api.SubnetTopologyPrivate, vpc.Subnets.Private)
+		return nil
 	}
 
 	refIG := v.rs.newResource("InternetGateway", &gfnec2.InternetGateway{})
 	vpcGA := "VPCGatewayAttachment"
 	v.rs.newResource(vpcGA, &gfnec2.VPCGatewayAttachment{
 		InternetGatewayId: refIG,
-		VpcId:             v.vpcResource.VPC,
+		VpcId:             v.vpcID,
 	})
 
 	refPublicRT := v.rs.newResource("PublicRouteTable", &gfnec2.RouteTable{
-		VpcId: v.vpcResource.VPC,
+		VpcId: v.vpcID,
 	})
 
 	v.rs.newResource("PublicSubnetRoute", &gfnec2.Route{
@@ -115,17 +115,17 @@ func (v *IPv4VPCResourceSet) AddResources() (*IPv4VPCResource, error) {
 		AWSCloudFormationDependsOn: []string{vpcGA},
 	})
 
-	v.vpcResource.SubnetDetails.Public = v.addSubnets(refPublicRT, api.SubnetTopologyPublic, vpc.Subnets.Public)
+	v.subnetDetails.Public = v.addSubnets(refPublicRT, api.SubnetTopologyPublic, vpc.Subnets.Public)
 
 	if err := v.addNATGateways(); err != nil {
-		return nil, err
+		return err
 	}
 
-	v.vpcResource.SubnetDetails.Private = v.addSubnets(nil, api.SubnetTopologyPrivate, vpc.Subnets.Private)
-	return v.vpcResource, nil
+	v.subnetDetails.Private = v.addSubnets(nil, api.SubnetTopologyPrivate, vpc.Subnets.Private)
+	return nil
 }
 
-func (s *subnetDetails) PublicSubnetRefs() []*gfnt.Value {
+func (s *SubnetDetails) PublicSubnetRefs() []*gfnt.Value {
 	var subnetRefs []*gfnt.Value
 	for _, subnetAZ := range s.Public {
 		subnetRefs = append(subnetRefs, subnetAZ.Subnet)
@@ -133,7 +133,7 @@ func (s *subnetDetails) PublicSubnetRefs() []*gfnt.Value {
 	return subnetRefs
 }
 
-func (s *subnetDetails) PrivateSubnetRefs() []*gfnt.Value {
+func (s *SubnetDetails) PrivateSubnetRefs() []*gfnt.Value {
 	var subnetRefs []*gfnt.Value
 	for _, subnetAZ := range s.Private {
 		subnetRefs = append(subnetRefs, subnetAZ.Subnet)
@@ -141,9 +141,9 @@ func (s *subnetDetails) PrivateSubnetRefs() []*gfnt.Value {
 	return subnetRefs
 }
 
-// AddOutputs adds VPC resource outputs
-func (v *IPv4VPCResourceSet) AddOutputs() {
-	v.rs.defineOutput(outputs.ClusterVPC, v.vpcResource.VPC, true, func(val string) error {
+// addOutputs adds VPC resource outputs
+func (v *IPv4VPCResourceSet) addOutputs() {
+	v.rs.defineOutput(outputs.ClusterVPC, v.vpcID, true, func(val string) error {
 		v.clusterConfig.VPC.ID = val
 		return nil
 	})
@@ -157,11 +157,11 @@ func (v *IPv4VPCResourceSet) AddOutputs() {
 		})
 	}
 
-	if subnetAZs := v.vpcResource.SubnetDetails.PrivateSubnetRefs(); len(subnetAZs) > 0 {
+	if subnetAZs := v.subnetDetails.PrivateSubnetRefs(); len(subnetAZs) > 0 {
 		addSubnetOutput(subnetAZs, api.SubnetTopologyPrivate, outputs.ClusterSubnetsPrivate)
 	}
 
-	if subnetAZs := v.vpcResource.SubnetDetails.PublicSubnetRefs(); len(subnetAZs) > 0 {
+	if subnetAZs := v.subnetDetails.PublicSubnetRefs(); len(subnetAZs) > 0 {
 		addSubnetOutput(subnetAZs, api.SubnetTopologyPublic, outputs.ClusterSubnetsPublic)
 	}
 
@@ -195,7 +195,7 @@ func (v *IPv4VPCResourceSet) addSubnets(refRT *gfnt.Value, topology api.SubnetTo
 		subnet := &gfnec2.Subnet{
 			AvailabilityZone: gfnt.NewString(az),
 			CidrBlock:        gfnt.NewString(subnet.CIDR.String()),
-			VpcId:            v.vpcResource.VPC,
+			VpcId:            v.vpcID,
 		}
 
 		switch topology {
@@ -221,7 +221,7 @@ func (v *IPv4VPCResourceSet) addSubnets(refRT *gfnt.Value, topology api.SubnetTo
 		})
 
 		if api.IsEnabled(v.clusterConfig.VPC.AutoAllocateIPv6) {
-			refSubnetSlices := getSubnetIPv6CIDRBlock()
+			refSubnetSlices := getSubnetIPv6CIDRBlock((len(v.clusterConfig.AvailabilityZones) * 2) + 2)
 			v.rs.newResource(subnetAlias+"CIDRv6", &gfnec2.SubnetCidrBlock{
 				SubnetId:      refSubnet,
 				Ipv6CidrBlock: gfnt.MakeFnSelect(gfnt.NewInteger(subnetIndexForIPv6), refSubnetSlices),
@@ -270,7 +270,7 @@ func (v *IPv4VPCResourceSet) importResources() error {
 		if err != nil {
 			return err
 		}
-		v.vpcResource.SubnetDetails.Private = subnetResources
+		v.subnetDetails.Private = subnetResources
 	}
 
 	if subnets := v.clusterConfig.VPC.Subnets.Public; subnets != nil {
@@ -278,7 +278,7 @@ func (v *IPv4VPCResourceSet) importResources() error {
 		if err != nil {
 			return err
 		}
-		v.vpcResource.SubnetDetails.Public = subnetResources
+		v.subnetDetails.Public = subnetResources
 	}
 
 	return nil
@@ -374,13 +374,13 @@ type clusterSecurityGroup struct {
 }
 
 // TODO move this
-func (c *ClusterResourceSet) addResourcesForSecurityGroups(vpcResource *IPv4VPCResource) *clusterSecurityGroup {
+func (c *ClusterResourceSet) addResourcesForSecurityGroups(vpcID *gfnt.Value) *clusterSecurityGroup {
 	var refControlPlaneSG, refClusterSharedNodeSG *gfnt.Value
 
 	if c.spec.VPC.SecurityGroup == "" {
 		refControlPlaneSG = c.newResource(cfnControlPlaneSGResource, &gfnec2.SecurityGroup{
 			GroupDescription: gfnt.NewString("Communication between the control plane and worker nodegroups"),
-			VpcId:            vpcResource.VPC,
+			VpcId:            vpcID,
 		})
 
 		if len(c.spec.VPC.ExtraCIDRs) > 0 {
@@ -403,7 +403,7 @@ func (c *ClusterResourceSet) addResourcesForSecurityGroups(vpcResource *IPv4VPCR
 	if c.spec.VPC.SharedNodeSecurityGroup == "" {
 		refClusterSharedNodeSG = c.newResource(cfnSharedNodeSGResource, &gfnec2.SecurityGroup{
 			GroupDescription: gfnt.NewString("Communication between all nodes in the cluster"),
-			VpcId:            vpcResource.VPC,
+			VpcId:            vpcID,
 		})
 		c.newResource("IngressInterNodeGroupSG", &gfnec2.SecurityGroupIngress{
 			GroupId:               refClusterSharedNodeSG,
@@ -581,7 +581,7 @@ func (v *IPv4VPCResourceSet) haNAT() {
 
 		// Allocate a routing table for the private subnet
 		refRT := v.rs.newResource("PrivateRouteTable"+alphanumericUpperAZ, &gfnec2.RouteTable{
-			VpcId: v.vpcResource.VPC,
+			VpcId: v.vpcID,
 		})
 		// Create a route that sends Internet traffic through the NAT gateway
 		v.rs.newResource("NATPrivateSubnetRoute"+alphanumericUpperAZ, &gfnec2.Route{
@@ -613,7 +613,7 @@ func (v *IPv4VPCResourceSet) singleNAT() {
 		alphanumericUpperAZ := strings.ToUpper(strings.Join(strings.Split(az, "-"), ""))
 
 		refRT := v.rs.newResource("PrivateRouteTable"+alphanumericUpperAZ, &gfnec2.RouteTable{
-			VpcId: v.vpcResource.VPC,
+			VpcId: v.vpcID,
 		})
 
 		v.rs.newResource("NATPrivateSubnetRoute"+alphanumericUpperAZ, &gfnec2.Route{
@@ -633,7 +633,7 @@ func (v *IPv4VPCResourceSet) noNAT() {
 		alphanumericUpperAZ := strings.ToUpper(strings.Join(strings.Split(az, "-"), ""))
 
 		refRT := v.rs.newResource("PrivateRouteTable"+alphanumericUpperAZ, &gfnec2.RouteTable{
-			VpcId: v.vpcResource.VPC,
+			VpcId: v.vpcID,
 		})
 		v.rs.newResource("RouteTableAssociationPrivate"+alphanumericUpperAZ, &gfnec2.SubnetRouteTableAssociation{
 			SubnetId:     gfnt.MakeRef("SubnetPrivate" + alphanumericUpperAZ),

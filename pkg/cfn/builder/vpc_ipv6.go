@@ -40,10 +40,10 @@ func NewIPv6VPCResourceSet(rs *resourceSet, clusterConfig *api.ClusterConfig, ec
 	}
 }
 
-func (v *IPv6VPCResourceSet) AddResources() error {
+func (v *IPv6VPCResourceSet) CreateTemplate() (*gfnt.Value, *SubnetDetails, error) {
 	var publicSubnetResourceRefs, privateSubnetResourceRefs []*gfnt.Value
 	vpcResourceRef := v.rs.newResource(VPCResourceKey, &gfnec2.VPC{
-		CidrBlock:          gfnt.NewString(api.DefaultCIDR().IP.String()),
+		CidrBlock:          gfnt.NewString(v.clusterConfig.VPC.CIDR.String()),
 		EnableDnsSupport:   gfnt.True(),
 		EnableDnsHostnames: gfnt.True(),
 	})
@@ -53,7 +53,7 @@ func (v *IPv6VPCResourceSet) AddResources() error {
 		VpcId:                       gfnt.MakeRef(VPCResourceKey),
 	})
 
-	v.rs.newResource(IGWKey, &gfnec2.InternetGateway{})
+	refIGW := v.rs.newResource(IGWKey, &gfnec2.InternetGateway{})
 
 	v.rs.newResource(GAKey, &gfnec2.VPCGatewayAttachment{
 		InternetGatewayId: gfnt.MakeRef(IGWKey),
@@ -87,17 +87,18 @@ func (v *IPv6VPCResourceSet) AddResources() error {
 	v.rs.newResource(PubSubRouteKey, &gfnec2.Route{
 		AWSCloudFormationDependsOn: []string{GAKey},
 		DestinationCidrBlock:       gfnt.NewString(InternetCIDR),
-		GatewayId:                  gfnt.MakeRef(GAKey),
+		GatewayId:                  refIGW,
 		RouteTableId:               gfnt.MakeRef(PubRouteTableKey),
 	})
 
 	v.rs.newResource(PubSubIPv6RouteKey, &gfnec2.Route{
 		AWSCloudFormationDependsOn: []string{GAKey},
 		DestinationIpv6CidrBlock:   gfnt.NewString(InternetIPv6CIDR),
-		GatewayId:                  gfnt.MakeRef(GAKey),
+		GatewayId:                  refIGW,
 		RouteTableId:               gfnt.MakeRef(PubRouteTableKey),
 	})
 
+	cidrPartitions := (len(v.clusterConfig.AvailabilityZones) * 2) + 2
 	for i, az := range v.clusterConfig.AvailabilityZones {
 		azFormatted := formatAZ(az)
 		v.rs.newResource(PrivateRouteTableKey+azFormatted, &gfnec2.RouteTable{
@@ -117,8 +118,8 @@ func (v *IPv6VPCResourceSet) AddResources() error {
 			RouteTableId:               gfnt.MakeRef(PrivateRouteTableKey + azFormatted),
 		})
 
-		publicSubnetResourceRefs = append(publicSubnetResourceRefs, v.createSubnet(az, azFormatted, i, false))
-		privateSubnetResourceRefs = append(privateSubnetResourceRefs, v.createSubnet(az, azFormatted, i+len(v.clusterConfig.AvailabilityZones), true))
+		publicSubnetResourceRefs = append(publicSubnetResourceRefs, v.createSubnet(az, azFormatted, i, cidrPartitions, false))
+		privateSubnetResourceRefs = append(privateSubnetResourceRefs, v.createSubnet(az, azFormatted, i+len(v.clusterConfig.AvailabilityZones), cidrPartitions, true))
 
 		v.rs.newResource(PubRouteTableAssociation+azFormatted, &gfnec2.SubnetRouteTableAssociation{
 			RouteTableId: gfnt.MakeRef(PubRouteTableKey),
@@ -145,22 +146,32 @@ func (v *IPv6VPCResourceSet) AddResources() error {
 	addSubnetOutput(publicSubnetResourceRefs, api.SubnetTopologyPublic, outputs.ClusterSubnetsPublic)
 	addSubnetOutput(privateSubnetResourceRefs, api.SubnetTopologyPrivate, outputs.ClusterSubnetsPrivate)
 
-	return nil
+	var publicSubnets, privateSubnets []SubnetResource
+	for _, s := range publicSubnetResourceRefs {
+		publicSubnets = append(publicSubnets, SubnetResource{Subnet: s})
+	}
+	for _, s := range privateSubnetResourceRefs {
+		privateSubnets = append(privateSubnets, SubnetResource{Subnet: s})
+	}
+	return vpcResourceRef, &SubnetDetails{
+		Private: privateSubnets,
+		Public:  publicSubnets,
+	}, nil
 }
 
 func (v *IPv6VPCResourceSet) RenderJSON() ([]byte, error) {
 	return v.rs.renderJSON()
 }
 
-func (v *IPv6VPCResourceSet) createSubnet(az, azFormatted string, i int, private bool) *gfnt.Value {
+func (v *IPv6VPCResourceSet) createSubnet(az, azFormatted string, i, cidrPartitions int, private bool) *gfnt.Value {
+	var assignIpv6AddressOnCreation *gfnt.Value
 	subnetKey := PublicSubnetKey + azFormatted
 	mapPublicIpOnLaunch := gfnt.True()
-	assignIpv6AddressOnCreation := gfnt.False()
 	elbTagKey := "kubernetes.io/role/elb"
 
 	if private {
 		subnetKey = PrivateSubnetKey + azFormatted
-		mapPublicIpOnLaunch = gfnt.False()
+		mapPublicIpOnLaunch = nil
 		assignIpv6AddressOnCreation = gfnt.True()
 		elbTagKey = "kubernetes.io/role/internal-elb"
 	}
@@ -168,8 +179,8 @@ func (v *IPv6VPCResourceSet) createSubnet(az, azFormatted string, i int, private
 	return v.rs.newResource(subnetKey, &gfnec2.Subnet{
 		AWSCloudFormationDependsOn:  []string{IPv6CIDRBlockKey},
 		AvailabilityZone:            gfnt.NewString(az),
-		CidrBlock:                   gfnt.MakeFnSelect(gfnt.NewInteger(i), getSubnetIPv4CIDRBlock()),
-		Ipv6CidrBlock:               gfnt.MakeFnSelect(gfnt.NewInteger(i), getSubnetIPv6CIDRBlock()),
+		CidrBlock:                   gfnt.MakeFnSelect(gfnt.NewInteger(i), getSubnetIPv4CIDRBlock(cidrPartitions)),
+		Ipv6CidrBlock:               gfnt.MakeFnSelect(gfnt.NewInteger(i), getSubnetIPv6CIDRBlock(cidrPartitions)),
 		MapPublicIpOnLaunch:         mapPublicIpOnLaunch,
 		AssignIpv6AddressOnCreation: assignIpv6AddressOnCreation,
 		VpcId:                       gfnt.MakeRef(VPCResourceKey),
