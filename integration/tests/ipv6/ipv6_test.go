@@ -22,13 +22,13 @@ import (
 	"github.com/weaveworks/eksctl/pkg/cfn/builder"
 	"github.com/weaveworks/eksctl/pkg/eks"
 	"github.com/weaveworks/eksctl/pkg/testutils"
+	"github.com/xgfone/netaddr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/xgfone/netaddr"
 )
 
 var params *tests.Params
@@ -137,7 +137,7 @@ var _ = Describe("(Integration) [EKS IPv6 test]", func() {
 				Expect(*s.AssignIpv6AddressOnCreation).To(BeTrue())
 			}
 
-			By("the k8s cluster's having an IP family of IPv6")
+			By("the k8s cluster's having IPv6 enabled")
 			var clientSet *kubernetes.Clientset
 			ctl, err := eks.New(&api.ProviderConfig{Region: params.Region}, clusterConfig)
 			Expect(err).NotTo(HaveOccurred())

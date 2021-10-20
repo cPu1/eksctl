@@ -17,6 +17,7 @@ import (
 	"github.com/weaveworks/eksctl/pkg/ctl/cmdutils/filter"
 	"github.com/weaveworks/eksctl/pkg/eks"
 	"github.com/weaveworks/eksctl/pkg/utils/names"
+	utilsstrings "github.com/weaveworks/eksctl/pkg/utils/strings"
 )
 
 // AddConfigFileFlag adds common --config-file flag
@@ -238,7 +239,7 @@ func NewCreateClusterLoader(cmd *Cmd, ngFilter *filter.NodeGroupFilter, ng *api.
 		}
 
 		if clusterConfig.VPC.NAT == nil {
-			if clusterConfig.VPC.IPFamily == nil || *clusterConfig.VPC.IPFamily != string(api.IPV6Family) {
+			if utilsstrings.Value(clusterConfig.VPC.IPFamily) != string(api.IPV6Family) {
 				clusterConfig.VPC.NAT = api.DefaultClusterNAT()
 			}
 		}
