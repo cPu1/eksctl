@@ -137,7 +137,7 @@ var _ = Describe("(Integration) [EKS IPv6 test]", func() {
 				Expect(*s.AssignIpv6AddressOnCreation).To(BeTrue())
 			}
 
-			By("the k8s cluster's having IPv6 enabled")
+			By("ensuring the K8s cluster has IPv6 enabled")
 			var clientSet *kubernetes.Clientset
 			ctl, err := eks.New(&api.ProviderConfig{Region: params.Region}, clusterConfig)
 			Expect(err).NotTo(HaveOccurred())
