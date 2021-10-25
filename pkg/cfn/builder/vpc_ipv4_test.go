@@ -17,7 +17,7 @@ import (
 
 var _ = Describe("VPC Template Builder", func() {
 	var (
-		vpcRs   *builder.VPCResourceSet
+		vpcRs   *builder.IPv4VPCResourceSet
 		cfg     *api.ClusterConfig
 		mockEC2 = &mocks.EC2API{}
 	)
@@ -29,13 +29,13 @@ var _ = Describe("VPC Template Builder", func() {
 	})
 
 	JustBeforeEach(func() {
-		vpcRs = builder.NewVPCResourceSet(builder.NewRS(), cfg, mockEC2)
+		vpcRs = builder.NewIPv4VPCResourceSet(builder.NewRS(), cfg, mockEC2)
 	})
 
 	Describe("AddResources", func() {
 		var (
 			addErr      error
-			result      *builder.VPCResource
+			result      *builder.IPv4VPCResource
 			vpcTemplate *fakes.FakeTemplate
 		)
 

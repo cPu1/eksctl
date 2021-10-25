@@ -54,7 +54,7 @@ var _ = Describe("VPC Endpoint Builder", func() {
 		}
 
 		rs := newResourceSet()
-		vpcResourceSet := NewVPCResourceSet(rs, vc.clusterConfig, provider.EC2())
+		vpcResourceSet := NewIPv4VPCResourceSet(rs, vc.clusterConfig, provider.EC2())
 		vpcResource, err := vpcResourceSet.AddResources()
 		if vc.err != "" {
 			Expect(err).To(HaveOccurred())

@@ -24,7 +24,7 @@ type ClusterResourceSet struct {
 	ec2API               ec2iface.EC2API
 	region               string
 	supportsManagedNodes bool
-	vpcResourceSet       *VPCResourceSet
+	vpcResourceSet       *IPv4VPCResourceSet
 	securityGroups       []*gfnt.Value
 }
 
@@ -40,7 +40,7 @@ func NewClusterResourceSet(ec2API ec2iface.EC2API, region string, spec *api.Clus
 		ec2API:               ec2API,
 		region:               region,
 		supportsManagedNodes: supportsManagedNodes,
-		vpcResourceSet:       NewVPCResourceSet(rs, spec, ec2API),
+		vpcResourceSet:       NewIPv4VPCResourceSet(rs, spec, ec2API),
 	}
 }
 

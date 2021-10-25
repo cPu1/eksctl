@@ -18,6 +18,7 @@ func TestCfnBuilder(t *testing.T) {
 
 var (
 	azA, azB                             = "us-west-2a", "us-west-2b"
+	azAFormatted, azBFormatted           = "USWEST2A", "USWEST2B"
 	privateSubnet1, privateSubnet2       = "subnet-0ade11bad78dced9f", "subnet-0f98135715dfcf55a"
 	publicSubnet1, publicSubnet2         = "subnet-0ade11bad78dced9e", "subnet-0f98135715dfcf55f"
 	privateSubnetRef1, privateSubnetRef2 = "SubnetPrivateUSWEST2A", "SubnetPrivateUSWEST2B"

@@ -17,25 +17,23 @@ import (
 	"github.com/weaveworks/eksctl/pkg/vpc"
 )
 
-var internetCIDR = gfnt.NewString("0.0.0.0/0")
-
 const (
 	cfnControlPlaneSGResource         = "ControlPlaneSecurityGroup"
 	cfnSharedNodeSGResource           = "ClusterSharedNodeSecurityGroup"
 	cfnIngressClusterToNodeSGResource = "IngressDefaultClusterToNodeSG"
 )
 
-// A VPCResourceSet builds the resources required for the specified VPC
-type VPCResourceSet struct {
+// A IPv4VPCResourceSet builds the resources required for the specified VPC
+type IPv4VPCResourceSet struct {
 	rs            *resourceSet
 	clusterConfig *api.ClusterConfig
 	ec2API        ec2iface.EC2API
 
-	vpcResource *VPCResource
+	vpcResource *IPv4VPCResource
 }
 
-// VPCResource represents a VPC resource
-type VPCResource struct {
+// IPv4VPCResource represents a VPC resource
+type IPv4VPCResource struct {
 	VPC           *gfnt.Value
 	SubnetDetails *subnetDetails
 }
@@ -51,8 +49,8 @@ type subnetDetails struct {
 	Public  []SubnetResource
 }
 
-// NewVPCResourceSet creates and returns a new VPCResourceSet
-func NewVPCResourceSet(rs *resourceSet, clusterConfig *api.ClusterConfig, ec2API ec2iface.EC2API) *VPCResourceSet {
+// NewIPv4VPCResourceSet creates and returns a new VPCResourceSet
+func NewIPv4VPCResourceSet(rs *resourceSet, clusterConfig *api.ClusterConfig, ec2API ec2iface.EC2API) *IPv4VPCResourceSet {
 	var vpcRef *gfnt.Value
 	if clusterConfig.VPC.ID == "" {
 		vpcRef = rs.newResource("VPC", &gfnec2.VPC{
@@ -64,12 +62,12 @@ func NewVPCResourceSet(rs *resourceSet, clusterConfig *api.ClusterConfig, ec2API
 		vpcRef = gfnt.NewString(clusterConfig.VPC.ID)
 	}
 
-	return &VPCResourceSet{
+	return &IPv4VPCResourceSet{
 		rs:            rs,
 		clusterConfig: clusterConfig,
 		ec2API:        ec2API,
 
-		vpcResource: &VPCResource{
+		vpcResource: &IPv4VPCResource{
 			VPC:           vpcRef,
 			SubnetDetails: &subnetDetails{},
 		},
@@ -77,7 +75,7 @@ func NewVPCResourceSet(rs *resourceSet, clusterConfig *api.ClusterConfig, ec2API
 }
 
 // AddResources adds all required resources
-func (v *VPCResourceSet) AddResources() (*VPCResource, error) {
+func (v *IPv4VPCResourceSet) AddResources() (*IPv4VPCResource, error) {
 	vpc := v.clusterConfig.VPC
 	if vpc.ID != "" { // custom VPC has been set
 		if err := v.importResources(); err != nil {
@@ -112,7 +110,7 @@ func (v *VPCResourceSet) AddResources() (*VPCResource, error) {
 
 	v.rs.newResource("PublicSubnetRoute", &gfnec2.Route{
 		RouteTableId:               refPublicRT,
-		DestinationCidrBlock:       internetCIDR,
+		DestinationCidrBlock:       gfnt.NewString(InternetCIDR),
 		GatewayId:                  refIG,
 		AWSCloudFormationDependsOn: []string{vpcGA},
 	})
@@ -144,7 +142,7 @@ func (s *subnetDetails) PrivateSubnetRefs() []*gfnt.Value {
 }
 
 // AddOutputs adds VPC resource outputs
-func (v *VPCResourceSet) AddOutputs() {
+func (v *IPv4VPCResourceSet) AddOutputs() {
 	v.rs.defineOutput(outputs.ClusterVPC, v.vpcResource.VPC, true, func(val string) error {
 		v.clusterConfig.VPC.ID = val
 		return nil
@@ -173,11 +171,11 @@ func (v *VPCResourceSet) AddOutputs() {
 }
 
 // RenderJSON returns the rendered JSON
-func (v *VPCResourceSet) RenderJSON() ([]byte, error) {
+func (v *IPv4VPCResourceSet) RenderJSON() ([]byte, error) {
 	return v.rs.renderJSON()
 }
 
-func (v *VPCResourceSet) addSubnets(refRT *gfnt.Value, topology api.SubnetTopology, subnets map[string]api.AZSubnetSpec) []SubnetResource {
+func (v *IPv4VPCResourceSet) addSubnets(refRT *gfnt.Value, topology api.SubnetTopology, subnets map[string]api.AZSubnetSpec) []SubnetResource {
 	var subnetIndexForIPv6 int
 	if api.IsEnabled(v.clusterConfig.VPC.AutoAllocateIPv6) {
 		// this is same kind of indexing we have in vpc.SetSubnets
@@ -223,17 +221,7 @@ func (v *VPCResourceSet) addSubnets(refRT *gfnt.Value, topology api.SubnetTopolo
 		})
 
 		if api.IsEnabled(v.clusterConfig.VPC.AutoAllocateIPv6) {
-			// get 8 of /64 subnets from the auto-allocated IPv6 block,
-			// and pick one block based on subnetIndexForIPv6 counter;
-			// NOTE: this is done inside of CloudFormation using Fn::Cidr,
-			// we don't slice it here, just construct the JSON expression
-			// that does slicing at runtime.
-			refAutoAllocateCIDRv6 := gfnt.MakeFnSelect(
-				gfnt.NewInteger(0), gfnt.MakeFnGetAttString("VPC", "Ipv6CidrBlocks"),
-			)
-			refSubnetSlices := gfnt.MakeFnCIDR(
-				refAutoAllocateCIDRv6, gfnt.NewInteger(8), gfnt.NewInteger(64),
-			)
+			refSubnetSlices := getSubnetIPv6CIDRBlock()
 			v.rs.newResource(subnetAlias+"CIDRv6", &gfnec2.SubnetCidrBlock{
 				SubnetId:      refSubnet,
 				Ipv6CidrBlock: gfnt.MakeFnSelect(gfnt.NewInteger(subnetIndexForIPv6), refSubnetSlices),
@@ -250,7 +238,7 @@ func (v *VPCResourceSet) addSubnets(refRT *gfnt.Value, topology api.SubnetTopolo
 	return subnetResources
 }
 
-func (v *VPCResourceSet) addNATGateways() error {
+func (v *IPv4VPCResourceSet) addNATGateways() error {
 	switch *v.clusterConfig.VPC.NAT.Gateway {
 	case api.ClusterHighlyAvailableNAT:
 		v.haNAT()
@@ -265,7 +253,7 @@ func (v *VPCResourceSet) addNATGateways() error {
 	return nil
 }
 
-func (v *VPCResourceSet) importResources() error {
+func (v *IPv4VPCResourceSet) importResources() error {
 	if subnets := v.clusterConfig.VPC.Subnets.Private; subnets != nil {
 		var (
 			subnetRoutes map[string]string
@@ -363,7 +351,7 @@ func importRouteTables(ec2API ec2iface.EC2API, subnets map[string]api.AZSubnetSp
 	return subnetRoutes, nil
 }
 
-func (v *VPCResourceSet) isFullyPrivate() bool {
+func (v *IPv4VPCResourceSet) isFullyPrivate() bool {
 	return v.clusterConfig.PrivateCluster.Enabled
 }
 
@@ -386,7 +374,7 @@ type clusterSecurityGroup struct {
 }
 
 // TODO move this
-func (c *ClusterResourceSet) addResourcesForSecurityGroups(vpcResource *VPCResource) *clusterSecurityGroup {
+func (c *ClusterResourceSet) addResourcesForSecurityGroups(vpcResource *IPv4VPCResource) *clusterSecurityGroup {
 	var refControlPlaneSG, refClusterSharedNodeSG *gfnt.Value
 
 	if c.spec.VPC.SecurityGroup == "" {
@@ -577,9 +565,9 @@ func makeNodeIngressRules(ng *api.NodeGroupBase, controlPlaneSG *gfnt.Value, vpc
 	return append(ingressRules, makeSSHIngressRules(ng, vpcCIDR, description)...)
 }
 
-func (v *VPCResourceSet) haNAT() {
+func (v *IPv4VPCResourceSet) haNAT() {
 	for _, az := range v.clusterConfig.AvailabilityZones {
-		alphanumericUpperAZ := strings.ToUpper(strings.Join(strings.Split(az, "-"), ""))
+		alphanumericUpperAZ := formatAZ(az)
 
 		// Allocate an EIP
 		v.rs.newResource("NATIP"+alphanumericUpperAZ, &gfnec2.EIP{
@@ -598,7 +586,7 @@ func (v *VPCResourceSet) haNAT() {
 		// Create a route that sends Internet traffic through the NAT gateway
 		v.rs.newResource("NATPrivateSubnetRoute"+alphanumericUpperAZ, &gfnec2.Route{
 			RouteTableId:         refRT,
-			DestinationCidrBlock: internetCIDR,
+			DestinationCidrBlock: gfnt.NewString(InternetCIDR),
 			NatGatewayId:         refNG,
 		})
 		// Associate the routing table with the subnet
@@ -609,7 +597,7 @@ func (v *VPCResourceSet) haNAT() {
 	}
 }
 
-func (v *VPCResourceSet) singleNAT() {
+func (v *IPv4VPCResourceSet) singleNAT() {
 	sortedAZs := v.clusterConfig.AvailabilityZones
 	firstUpperAZ := strings.ToUpper(strings.Join(strings.Split(sortedAZs[0], "-"), ""))
 
@@ -630,7 +618,7 @@ func (v *VPCResourceSet) singleNAT() {
 
 		v.rs.newResource("NATPrivateSubnetRoute"+alphanumericUpperAZ, &gfnec2.Route{
 			RouteTableId:         refRT,
-			DestinationCidrBlock: internetCIDR,
+			DestinationCidrBlock: gfnt.NewString(InternetCIDR),
 			NatGatewayId:         refNG,
 		})
 		v.rs.newResource("RouteTableAssociationPrivate"+alphanumericUpperAZ, &gfnec2.SubnetRouteTableAssociation{
@@ -640,7 +628,7 @@ func (v *VPCResourceSet) singleNAT() {
 	}
 }
 
-func (v *VPCResourceSet) noNAT() {
+func (v *IPv4VPCResourceSet) noNAT() {
 	for _, az := range v.clusterConfig.AvailabilityZones {
 		alphanumericUpperAZ := strings.ToUpper(strings.Join(strings.Split(az, "-"), ""))
 
