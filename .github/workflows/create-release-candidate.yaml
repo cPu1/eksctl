@@ -1,0 +1,35 @@
+name: create-release-candidate
+on:
+  push:
+    branches:
+      - actions-test
+    tags:
+      - actions-test
+#      - /^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+/
+
+jobs:
+  create-release-candidate:
+    name: Create GitHub release candidate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Cache go-build and mod
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/go-build/
+            ~/go/pkg/mod/
+          key: ${{ hashFiles('go.sum') }}
+      - name: Setup Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17.x
+      - name: Setup deps
+        run: |
+          make install-build-deps
+      - name: Publish release candidate
+        run: |
+          ./build/scripts/do-release-candidate.sh
