@@ -60,9 +60,9 @@ require (
 	k8s.io/client-go v0.23.1
 	k8s.io/cloud-provider v0.21.2
 	k8s.io/code-generator v0.22.1
-	k8s.io/kops v1.21.2
+	k8s.io/kops v1.22.3
 	k8s.io/kubelet v0.21.2
-	k8s.io/legacy-cloud-providers v0.21.2
+	k8s.io/legacy-cloud-providers v0.22.5
 	sigs.k8s.io/aws-iam-authenticator v0.5.4
 	sigs.k8s.io/mdtoc v1.1.0
 	sigs.k8s.io/yaml v1.3.0
@@ -111,6 +111,7 @@ require (
 	github.com/alecthomas/jsonschema v0.0.0-20211209230136-e2b41affa5c1 // indirect
 	github.com/alexkohler/prealloc v1.0.0 // indirect
 	github.com/apex/log v1.9.0 // indirect
+	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20200428143746-21a406dcc535 // indirect
 	github.com/ashanbrown/forbidigo v1.3.0 // indirect
 	github.com/ashanbrown/makezero v1.1.0 // indirect
@@ -225,6 +226,7 @@ require (
 	github.com/google/btree v1.0.1 // indirect
 	github.com/google/certificate-transparency-go v1.1.2-0.20210511102531-373a877eec92 // indirect
 	github.com/google/go-cmp v0.5.6 // indirect
+	github.com/google/go-containerregistry v0.7.0 // indirect
 	github.com/google/go-github/v41 v41.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
@@ -232,7 +234,7 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/google/wire v0.5.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.1.1 // indirect
-	github.com/googleapis/gnostic v0.5.4 // indirect
+	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/gophercloud/gophercloud v0.18.0 // indirect
 	github.com/gordonklaus/ineffassign v0.0.0-20210914165742-4cc7213b9bc8 // indirect
 	github.com/goreleaser/chglog v0.1.2 // indirect
@@ -442,14 +444,14 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 	honnef.co/go/tools v0.2.2 // indirect
 	k8s.io/apiserver v0.23.1 // indirect
-	k8s.io/component-base v0.22.1 // indirect
+	k8s.io/component-base v0.22.5 // indirect
 	k8s.io/csi-translation-lib v0.21.2 // indirect
 	k8s.io/gengo v0.0.0-20210203185629-de9496dff47b // indirect
 	k8s.io/klog/v2 v2.30.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20210305001622-591a79e4bda7 // indirect
 	k8s.io/kubectl v0.23.1 // indirect
 	k8s.io/sample-controller v0.22.1 // indirect
-	k8s.io/utils v0.0.0-20210305010621-2afb4311ab10 // indirect
+	k8s.io/utils v0.0.0-20210819203725-bdf08cb9a70a // indirect
 	mvdan.cc/gofumpt v0.2.1 // indirect
 	mvdan.cc/interfacer v0.0.0-20180901003855-c20040233aed // indirect
 	mvdan.cc/lint v0.0.0-20170908181259-adc824a0674b // indirect
