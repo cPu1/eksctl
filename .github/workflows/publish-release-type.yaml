@@ -1,12 +1,12 @@
 on:
   workflow_call:
     inputs:
-      githubToken:
-        required: true
-        type: string
       isReleaseCandidate:
         required: true
         type: boolean
+    secrets:
+      githubToken:
+        required: true
 
 jobs:
   publish-release:
@@ -32,12 +32,12 @@ jobs:
       - name: Publish release
         if: ${{ !inputs.isReleaseCandidate }}
         env:
-          GITHUB_TOKEN: ${{ inputs.githubToken }}
+          GITHUB_TOKEN: ${{ secrets.githubToken }}
         run: |
           ./build/scripts/do-release.sh
       - name: Publish release candidate
         if: ${{ inputs.isReleaseCandidate }}
         env:
-          GITHUB_TOKEN: ${{ inputs.githubToken }}
+          GITHUB_TOKEN: ${{ secrets.githubToken }}
         run: |
           ./build/scripts/do-release-candidate.sh
