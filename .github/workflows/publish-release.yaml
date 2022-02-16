@@ -13,3 +13,4 @@ jobs:
     needs: [test-and-build]
     with:
       isReleaseCandidate: false
+      githubToken: ${{ secrets.GITHUB_TOKEN }}
