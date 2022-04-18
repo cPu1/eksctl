@@ -86,7 +86,7 @@ func (k *Wrapper) UseVPC(ctx context.Context, ec2API awsapi.EC2, spec *api.Clust
 			topology: api.SubnetTopologyPrivate,
 		},
 	} {
-		if err := vpc.ImportSubnets(ctx, ec2API, spec, s.topology, s.subnets); err != nil {
+		if err := vpc.ImportSubnets(ctx, ec2API, spec, s.topology, s.subnets, false); err != nil {
 			return err
 		}
 	}

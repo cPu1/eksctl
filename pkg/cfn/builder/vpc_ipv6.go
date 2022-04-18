@@ -47,7 +47,7 @@ func (v *IPv6VPCResourceSet) CreateTemplate(ctx context.Context) (*gfnt.Value, *
 
 	addSubnetOutput := func(subnetRefs []*gfnt.Value, topology api.SubnetTopology, outputName string) {
 		v.rs.defineJoinedOutput(outputName, subnetRefs, true, func(value string) error {
-			return vpc.ImportSubnetsFromIDList(ctx, v.ec2API, v.clusterConfig, topology, strings.Split(value, ","))
+			return vpc.ImportSubnetsFromIDList(ctx, v.ec2API, v.clusterConfig, topology, strings.Split(value, ","), false)
 		})
 	}
 
@@ -62,9 +62,9 @@ func (v *IPv6VPCResourceSet) CreateTemplate(ctx context.Context) (*gfnt.Value, *
 		subnet := v.createSubnet(az, azFormatted, i+len(v.clusterConfig.AvailabilityZones), cidrPartitions, true)
 		privateSubnetResourceRefs = append(privateSubnetResourceRefs, subnet)
 		privateSubnets = append(privateSubnets, SubnetResource{
-			Subnet:           subnet,
-			AvailabilityZone: az,
-			RouteTable:       rtRef,
+			Subnet:     subnet,
+			ZoneName:   az,
+			RouteTable: rtRef,
 		})
 
 		v.rs.newResource(PrivateRouteTableAssociation+azFormatted, &gfnec2.SubnetRouteTableAssociation{
@@ -130,7 +130,7 @@ func (v *IPv6VPCResourceSet) CreateTemplate(ctx context.Context) (*gfnt.Value, *
 		azFormatted := formatAZ(az)
 
 		subnet := v.createSubnet(az, azFormatted, i, cidrPartitions, false)
-		publicSubnets = append(publicSubnets, SubnetResource{Subnet: subnet, AvailabilityZone: az})
+		publicSubnets = append(publicSubnets, SubnetResource{Subnet: subnet, ZoneName: az})
 		publicSubnetResourceRefs = append(publicSubnetResourceRefs, subnet)
 
 		v.rs.newResource(PubRouteTableAssociation+azFormatted, &gfnec2.SubnetRouteTableAssociation{

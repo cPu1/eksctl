@@ -32,9 +32,10 @@ type IPv4VPCResourceSet struct {
 }
 
 type SubnetResource struct {
-	Subnet           *gfnt.Value
-	RouteTable       *gfnt.Value
-	AvailabilityZone string
+	Subnet     *gfnt.Value
+	RouteTable *gfnt.Value
+	ZoneName   string
+	IsLocal    bool
 }
 
 type SubnetDetails struct {
@@ -121,7 +122,9 @@ func (v *IPv4VPCResourceSet) addResources() error {
 func (s *SubnetDetails) PublicSubnetRefs() []*gfnt.Value {
 	var subnetRefs []*gfnt.Value
 	for _, subnetAZ := range s.Public {
-		subnetRefs = append(subnetRefs, subnetAZ.Subnet)
+		if !subnetAZ.IsLocal {
+			subnetRefs = append(subnetRefs, subnetAZ.Subnet)
+		}
 	}
 	return subnetRefs
 }
@@ -129,7 +132,29 @@ func (s *SubnetDetails) PublicSubnetRefs() []*gfnt.Value {
 func (s *SubnetDetails) PrivateSubnetRefs() []*gfnt.Value {
 	var subnetRefs []*gfnt.Value
 	for _, subnetAZ := range s.Private {
-		subnetRefs = append(subnetRefs, subnetAZ.Subnet)
+		if !subnetAZ.IsLocal {
+			subnetRefs = append(subnetRefs, subnetAZ.Subnet)
+		}
+	}
+	return subnetRefs
+}
+
+func (s *SubnetDetails) PublicLocalZoneSubnetRefs() []*gfnt.Value {
+	var subnetRefs []*gfnt.Value
+	for _, subnetAZ := range s.Public {
+		if subnetAZ.IsLocal {
+			subnetRefs = append(subnetRefs, subnetAZ.Subnet)
+		}
+	}
+	return subnetRefs
+}
+
+func (s *SubnetDetails) PrivateLocalZoneSubnetRefs() []*gfnt.Value {
+	var subnetRefs []*gfnt.Value
+	for _, subnetAZ := range s.Private {
+		if subnetAZ.IsLocal {
+			subnetRefs = append(subnetRefs, subnetAZ.Subnet)
+		}
 	}
 	return subnetRefs
 }
@@ -144,18 +169,26 @@ func (v *IPv4VPCResourceSet) addOutputs(ctx context.Context) {
 		v.rs.defineOutputWithoutCollector(outputs.ClusterFeatureNATMode, v.clusterConfig.VPC.NAT.Gateway, false)
 	}
 
-	addSubnetOutput := func(subnetRefs []*gfnt.Value, topology api.SubnetTopology, outputName string) {
+	addSubnetOutput := func(subnetRefs []*gfnt.Value, topology api.SubnetTopology, outputName string, localZone bool) {
 		v.rs.defineJoinedOutput(outputName, subnetRefs, true, func(value string) error {
-			return vpc.ImportSubnetsFromIDList(ctx, v.ec2API, v.clusterConfig, topology, strings.Split(value, ","))
+			return vpc.ImportSubnetsFromIDList(ctx, v.ec2API, v.clusterConfig, topology, strings.Split(value, ","), localZone)
 		})
 	}
 
 	if subnetAZs := v.subnetDetails.PrivateSubnetRefs(); len(subnetAZs) > 0 {
-		addSubnetOutput(subnetAZs, api.SubnetTopologyPrivate, outputs.ClusterSubnetsPrivate)
+		addSubnetOutput(subnetAZs, api.SubnetTopologyPrivate, outputs.ClusterSubnetsPrivate, false)
 	}
 
 	if subnetAZs := v.subnetDetails.PublicSubnetRefs(); len(subnetAZs) > 0 {
-		addSubnetOutput(subnetAZs, api.SubnetTopologyPublic, outputs.ClusterSubnetsPublic)
+		addSubnetOutput(subnetAZs, api.SubnetTopologyPublic, outputs.ClusterSubnetsPublic, false)
+	}
+
+	if subnetAZs := v.subnetDetails.PrivateLocalZoneSubnetRefs(); len(subnetAZs) > 0 {
+		addSubnetOutput(subnetAZs, api.SubnetTopologyPrivate, outputs.ClusterSubnetsPrivateLocal, true)
+	}
+
+	if subnetAZs := v.subnetDetails.PublicLocalZoneSubnetRefs(); len(subnetAZs) > 0 {
+		addSubnetOutput(subnetAZs, api.SubnetTopologyPublic, outputs.ClusterSubnetsPublicLocal, true)
 	}
 
 	if v.isFullyPrivate() {
@@ -173,6 +206,7 @@ func (v *IPv4VPCResourceSet) RenderJSON() ([]byte, error) {
 }
 
 func (v *IPv4VPCResourceSet) addSubnets(refRT *gfnt.Value, topology api.SubnetTopology, subnets map[string]api.AZSubnetSpec) []SubnetResource {
+	fmt.Printf("add subnets %+v\n", subnets)
 	var subnetIndexForIPv6 int
 	if api.IsEnabled(v.clusterConfig.VPC.AutoAllocateIPv6) {
 		// this is same kind of indexing we have in vpc.SetSubnets
@@ -186,12 +220,15 @@ func (v *IPv4VPCResourceSet) addSubnets(refRT *gfnt.Value, topology api.SubnetTo
 
 	var subnetResources []SubnetResource
 
-	for name, subnet := range subnets {
-		az := subnet.AZ
+	for name, subnetSpec := range subnets {
 		nameAlias := strings.ToUpper(strings.Join(strings.Split(name, "-"), ""))
+		zoneName := subnetSpec.AZ
+		if zoneName == "" {
+			zoneName = subnetSpec.LocalZone
+		}
 		subnet := &gfnec2.Subnet{
-			AvailabilityZone: gfnt.NewString(az),
-			CidrBlock:        gfnt.NewString(subnet.CIDR.String()),
+			AvailabilityZone: gfnt.NewString(zoneName),
+			CidrBlock:        gfnt.NewString(subnetSpec.CIDR.String()),
 			VpcId:            v.vpcID,
 		}
 
@@ -226,11 +263,17 @@ func (v *IPv4VPCResourceSet) addSubnets(refRT *gfnt.Value, topology api.SubnetTo
 			subnetIndexForIPv6++
 		}
 
-		subnetResources = append(subnetResources, SubnetResource{
-			AvailabilityZone: az,
-			RouteTable:       refRT,
-			Subnet:           refSubnet,
-		})
+		sr := SubnetResource{
+			RouteTable: refRT,
+			Subnet:     refSubnet,
+		}
+		if subnetSpec.LocalZone != "" {
+			sr.ZoneName = subnetSpec.LocalZone
+			sr.IsLocal = true
+		} else {
+			sr.ZoneName = subnetSpec.AZ
+		}
+		subnetResources = append(subnetResources, sr)
 	}
 	return subnetResources
 }
@@ -268,6 +311,7 @@ type clusterSecurityGroup struct {
 	ClusterSharedNode *gfnt.Value
 }
 
+// TODO
 func (v *IPv4VPCResourceSet) haNAT() {
 	for _, az := range v.clusterConfig.AvailabilityZones {
 		alphanumericUpperAZ := formatAZ(az)
@@ -312,8 +356,9 @@ func (v *IPv4VPCResourceSet) singleNAT() {
 		SubnetId:     gfnt.MakeRef("SubnetPublic" + firstUpperAZ),
 	})
 
-	for _, az := range v.clusterConfig.AvailabilityZones {
-		alphanumericUpperAZ := strings.ToUpper(strings.Join(strings.Split(az, "-"), ""))
+	allZones := append(v.clusterConfig.AvailabilityZones, v.clusterConfig.LocalZones...)
+	for _, zone := range allZones {
+		alphanumericUpperAZ := strings.ToUpper(strings.Join(strings.Split(zone, "-"), ""))
 
 		refRT := v.rs.newResource("PrivateRouteTable"+alphanumericUpperAZ, &gfnec2.RouteTable{
 			VpcId: v.vpcID,
@@ -332,8 +377,9 @@ func (v *IPv4VPCResourceSet) singleNAT() {
 }
 
 func (v *IPv4VPCResourceSet) noNAT() {
-	for _, az := range v.clusterConfig.AvailabilityZones {
-		alphanumericUpperAZ := strings.ToUpper(strings.Join(strings.Split(az, "-"), ""))
+	allZones := append(v.clusterConfig.AvailabilityZones, v.clusterConfig.LocalZones...)
+	for _, zone := range allZones {
+		alphanumericUpperAZ := strings.ToUpper(strings.Join(strings.Split(zone, "-"), ""))
 
 		refRT := v.rs.newResource("PrivateRouteTable"+alphanumericUpperAZ, &gfnec2.RouteTable{
 			VpcId: v.vpcID,

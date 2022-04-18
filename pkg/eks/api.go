@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
@@ -347,6 +348,25 @@ func SetAvailabilityZones(ctx context.Context, spec *api.ClusterConfig, given []
 	logger.Info("setting availability zones to %v", zones)
 	spec.AvailabilityZones = zones
 
+	return nil
+}
+
+// ValidateLocalZones validates that the specified local zones exist.
+func ValidateLocalZones(ctx context.Context, clusterConfig *api.ClusterConfig, ec2API awsapi.EC2, region string) error {
+	output, err := ec2API.DescribeAvailabilityZones(ctx, &ec2.DescribeAvailabilityZonesInput{
+		ZoneNames: clusterConfig.LocalZones,
+	})
+	if err != nil {
+		return fmt.Errorf("error describing availability zones: %w", err)
+	}
+	if len(output.AvailabilityZones) != len(clusterConfig.LocalZones) {
+		return fmt.Errorf("failed to find all local zones; expected to find %d local zones but found only %d", len(clusterConfig.LocalZones), len(output.AvailabilityZones))
+	}
+	for _, az := range output.AvailabilityZones {
+		if *az.ZoneType != "local-zone" {
+			return fmt.Errorf("non local-zone %q specified in localZones", *az.ZoneName)
+		}
+	}
 	return nil
 }
 

@@ -188,8 +188,9 @@ func doCreateCluster(cmd *cmdutils.Cmd, ngFilter *filter.NodeGroupFilter, params
 		// treat remote state as authority over local state
 		cfg.VPC.CIDR = nil
 		// load subnets from local map created from flags, into the config
+		// TODO: validate zones
 		for topology := range params.Subnets {
-			if err := vpc.ImportSubnetsFromIDList(ctx, ctl.Provider.EC2(), cfg, topology, *params.Subnets[topology]); err != nil {
+			if err := vpc.ImportSubnetsFromIDList(ctx, ctl.Provider.EC2(), cfg, topology, *params.Subnets[topology], false); err != nil {
 				return err
 			}
 		}
@@ -436,6 +437,10 @@ func createOrImportVPC(ctx context.Context, cmd *cmdutils.Cmd, cfg *api.ClusterC
 			return err
 		}
 
+		if err := eks.ValidateLocalZones(ctx, cfg, ctl.Provider.EC2(), ctl.Provider.Region()); err != nil {
+			return err
+		}
+
 		// Skip setting subnets
 		// The default subnet config set by SetSubnets will fail validation on a subsequent run of `create cluster`
 		// because those fields indicate usage of pre-existing VPC and subnets
@@ -444,7 +449,7 @@ func createOrImportVPC(ctx context.Context, cmd *cmdutils.Cmd, cfg *api.ClusterC
 			return nil
 		}
 
-		return vpc.SetSubnets(cfg.VPC, cfg.AvailabilityZones)
+		return vpc.SetSubnets(cfg.VPC, cfg.AvailabilityZones, cfg.LocalZones)
 	}
 
 	if params.KopsClusterNameForVPC != "" {

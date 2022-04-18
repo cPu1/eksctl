@@ -244,6 +244,8 @@ func (c *ClusterResourceSet) addResourcesForControlPlane(subnetDetails *SubnetDe
 		PublicAccessCidrs:     gfnt.NewStringSlice(c.spec.VPC.PublicAccessCIDRs...),
 	}
 
+	fmt.Println("creating subnets", subnetDetails.PublicSubnetRefs(), subnetDetails.PrivateSubnetRefs())
+
 	clusterVPC.SubnetIds = gfnt.NewSlice(append(subnetDetails.PublicSubnetRefs(), subnetDetails.PrivateSubnetRefs()...)...)
 
 	serviceRoleARN := gfnt.MakeFnGetAttString("ServiceRole", "Arn")

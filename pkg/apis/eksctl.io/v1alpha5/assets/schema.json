@@ -24,11 +24,17 @@
         },
         "id": {
           "type": "string"
+        },
+        "localZone": {
+          "type": "string",
+          "description": "specifies a local zone",
+          "x-intellij-html-description": "specifies a local zone"
         }
       },
       "preferredOrder": [
         "id",
         "az",
+        "localZone",
         "cidr"
       ],
       "additionalProperties": false
@@ -204,6 +210,14 @@
         "kubernetesNetworkConfig": {
           "$ref": "#/definitions/KubernetesNetworkConfig"
         },
+        "localZones": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "specifies a list of local zones where the subnets should be created. Only self-managed nodegroups can be launched in local zones. These subnets are not passed to EKS.",
+          "x-intellij-html-description": "specifies a list of local zones where the subnets should be created. Only self-managed nodegroups can be launched in local zones. These subnets are not passed to EKS."
+        },
         "managedNodeGroups": {
           "items": {
             "$ref": "#/definitions/ManagedNodeGroup"
@@ -249,6 +263,7 @@
         "managedNodeGroups",
         "fargateProfiles",
         "availabilityZones",
+        "localZones",
         "cloudWatch",
         "secretsEncryption",
         "gitops",

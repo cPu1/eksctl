@@ -93,7 +93,7 @@ func (e *VPCEndpointResourceSet) subnetsForAZs(azs []string) []*gfnt.Value {
 	var subnetRefs []*gfnt.Value
 	for _, az := range azs {
 		for _, subnet := range e.subnets {
-			if subnet.AvailabilityZone == az {
+			if subnet.ZoneName == az {
 				subnetRefs = append(subnetRefs, subnet.Subnet)
 			}
 		}

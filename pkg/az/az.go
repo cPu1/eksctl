@@ -69,6 +69,10 @@ func getZones(ctx context.Context, ec2API awsapi.EC2, region string) ([]string, 
 				Name:   aws.String("state"),
 				Values: []string{string(ec2types.AvailabilityZoneStateAvailable)},
 			},
+			{
+				Name:   aws.String("zone-type"),
+				Values: []string{string(ec2types.LocationTypeAvailabilityZone)},
+			},
 		},
 	}
 

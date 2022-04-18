@@ -76,7 +76,7 @@ func (v *ExistingVPCResourceSet) addOutputs(ctx context.Context) {
 
 	addSubnetOutput := func(subnetRefs []*gfnt.Value, topology api.SubnetTopology, outputName string) {
 		v.rs.defineJoinedOutput(outputName, subnetRefs, true, func(value string) error {
-			return vpc.ImportSubnetsFromIDList(ctx, v.ec2API, v.clusterConfig, topology, strings.Split(value, ","))
+			return vpc.ImportSubnetsFromIDList(ctx, v.ec2API, v.clusterConfig, topology, strings.Split(value, ","), false)
 		})
 	}
 
@@ -136,8 +136,8 @@ func makeSubnetResources(subnets map[string]api.AZSubnetSpec, subnetRoutes map[s
 	for _, network := range subnets {
 		az := network.AZ
 		sr := SubnetResource{
-			AvailabilityZone: az,
-			Subnet:           gfnt.NewString(network.ID),
+			ZoneName: az,
+			Subnet:   gfnt.NewString(network.ID),
 		}
 
 		if subnetRoutes != nil {

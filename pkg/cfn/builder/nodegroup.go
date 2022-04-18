@@ -235,7 +235,7 @@ func (n *NodeGroupResourceSet) addResourcesForNodeGroup(ctx context.Context) err
 		LaunchTemplateData: launchTemplateData,
 	})
 
-	vpcZoneIdentifier, err := AssignSubnets(ctx, n.spec.NodeGroupBase, n.vpcImporter, n.clusterSpec, n.ec2API)
+	vpcZoneIdentifier, err := AssignSubnets(ctx, n.spec, n.vpcImporter, n.clusterSpec, n.ec2API)
 	if err != nil {
 		return err
 	}
@@ -328,31 +328,47 @@ func generateNodeName(ng *api.NodeGroupBase, meta *api.ClusterMeta) string {
 	return strings.Join(nameParts, "")
 }
 
-// AssignSubnets subnets based on the specified availability zones
-func AssignSubnets(ctx context.Context, spec *api.NodeGroupBase, vpcImporter vpc.Importer, clusterSpec *api.ClusterConfig, ec2API awsapi.EC2) (*gfnt.Value, error) {
+// AssignSubnets assigns subnets based on the specified availability zones
+// TODO
+func AssignSubnets(ctx context.Context, nodePool api.NodePool, vpcImporter vpc.Importer, clusterSpec *api.ClusterConfig, ec2API awsapi.EC2) (*gfnt.Value, error) {
 	// Currently, goformation type system doesn't allow specifying `VPCZoneIdentifier: { "Fn::ImportValue": ... }`,
 	// and tags don't have `PropagateAtLaunch` field, so we have a custom method here until this gets resolved
 
-	if len(spec.AvailabilityZones) > 0 || len(spec.Subnets) > 0 || api.IsEnabled(spec.EFAEnabled) {
+	spec := nodePool.BaseNodeGroup()
+
+	var localZones []string
+	if ng, ok := nodePool.(*api.NodeGroup); ok {
+		localZones = ng.LocalZones
+	}
+
+	if len(spec.AvailabilityZones) > 0 || len(localZones) > 0 || len(spec.Subnets) > 0 || api.IsEnabled(spec.EFAEnabled) {
 		subnets := clusterSpec.VPC.Subnets.Public
 		typ := "public"
 		if spec.PrivateNetworking {
 			subnets = clusterSpec.VPC.Subnets.Private
 			typ = "private"
 		}
-		subnetIDs, err := vpc.SelectNodeGroupSubnets(ctx, spec.AvailabilityZones, spec.Subnets, subnets, ec2API, clusterSpec.VPC.ID)
+		subnetIDs, err := vpc.SelectNodeGroupSubnets(ctx, spec.AvailabilityZones, localZones, spec.Subnets, subnets, ec2API, clusterSpec.VPC.ID)
 		if api.IsEnabled(spec.EFAEnabled) && len(subnetIDs) > 1 {
-			subnetIDs = []string{subnetIDs[0]}
+			subnetIDs = subnetIDs[:1]
 			logger.Info("EFA requires all nodes be in a single subnet, arbitrarily choosing one: %s", subnetIDs)
 		}
 		return gfnt.NewStringSlice(subnetIDs...), errors.Wrapf(err, "couldn't find %s subnets", typ)
 	}
 
 	var subnets *gfnt.Value
-	if spec.PrivateNetworking {
-		subnets = vpcImporter.SubnetsPrivate()
+	if _, unmanaged := nodePool.(*api.NodeGroup); unmanaged {
+		if spec.PrivateNetworking {
+			subnets = vpcImporter.SubnetsPrivateAllZones()
+		} else {
+			subnets = vpcImporter.SubnetsPublicAllZones()
+		}
 	} else {
-		subnets = vpcImporter.SubnetsPublic()
+		if spec.PrivateNetworking {
+			subnets = vpcImporter.SubnetsPrivateAllZones()
+		} else {
+			subnets = vpcImporter.SubnetsPublic()
+		}
 	}
 
 	return subnets, nil

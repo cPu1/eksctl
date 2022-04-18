@@ -1,20 +1,23 @@
-# A simple example of ClusterConfig object:
 ---
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 
+localZones: ["us-west-2-lax-1a", "us-west-2-lax-1b"]
+
 metadata:
-  name: cluster-1
-  region: eu-north-1
+  name: test-cluster-1
+  region: us-west-2
 
 nodeGroups:
   - name: ng-1
     instanceType: m5.large
     desiredCapacity: 1
 
-cloudWatch:
-    clusterLogging:
-        # enable specific types of cluster control plane logs
-        enableTypes: ["audit", "authenticator", "controllerManager"]
-        # all supported types: "api", "audit", "authenticator", "controllerManager", "scheduler"
-        # supported special values: "*" and "all"
+  # - name: g2
+  #   desiredCapacity: 1
+  #   subnets:
+  #   - subnet-09ab476799e03e3cc
+
+managedNodeGroups:
+  - name: mng
+    desiredCapacity: 1
