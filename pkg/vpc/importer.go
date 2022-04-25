@@ -3,9 +3,10 @@ package vpc
 import (
 	"fmt"
 
+	gfnt "github.com/weaveworks/goformation/v4/cloudformation/types"
+
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/cfn/outputs"
-	gfnt "github.com/weaveworks/goformation/v4/cloudformation/types"
 )
 
 //go:generate go run github.com/maxbrunsfeld/counterfeiter/v6 -generate
@@ -19,6 +20,10 @@ type Importer interface {
 	SecurityGroups() gfnt.Slice
 	SubnetsPublic() *gfnt.Value
 	SubnetsPrivate() *gfnt.Value
+
+	// TODO REMOVE
+	SubnetsPublicAllZones() *gfnt.Value
+	SubnetsPrivateAllZones() *gfnt.Value
 }
 
 // StackConfigImporter returns VPC info based on the Cluster Stack
@@ -70,9 +75,29 @@ func (si *StackConfigImporter) SubnetsPublic() *gfnt.Value {
 }
 
 // SubnetsPrivate returns a gfnt value based on the cluster stack name
-// and the public subnets from the cluster stack output
+// and the private subnets from the cluster stack output
 func (si *StackConfigImporter) SubnetsPrivate() *gfnt.Value {
 	return gfnt.MakeFnSplit(",", makeImportValue(si.clusterStackName, outputs.ClusterSubnetsPrivate))
+}
+
+// SubnetsPublicAllZones returns a gfnt value based on the cluster stack name
+// and the public subnets in both local zones and availability zones from the cluster stack output
+func (si *StackConfigImporter) SubnetsPublicAllZones() *gfnt.Value {
+	allSubnets := gfnt.MakeFnJoin(",", gfnt.Slice{
+		makeImportValue(si.clusterStackName, outputs.ClusterSubnetsPublic),
+		makeImportValue(si.clusterStackName, outputs.ClusterSubnetsPublicLocal),
+	})
+	return gfnt.MakeFnSplit(",", allSubnets)
+}
+
+// SubnetsPrivateAllZones returns a gfnt value based on the cluster stack name
+// and the private subnets in both local zones and availability zones from the cluster stack output
+func (si *StackConfigImporter) SubnetsPrivateAllZones() *gfnt.Value {
+	allSubnets := gfnt.MakeFnJoin(",", gfnt.Slice{
+		makeImportValue(si.clusterStackName, outputs.ClusterSubnetsPrivate),
+		makeImportValue(si.clusterStackName, outputs.ClusterSubnetsPrivateLocal),
+	})
+	return gfnt.MakeFnSplit(",", allSubnets)
 }
 
 func makeImportValue(stackName, output string) *gfnt.Value {
@@ -133,5 +158,17 @@ func (si *SpecConfigImporter) SubnetsPublic() *gfnt.Value {
 // SubnetsPrivate returns a gfnt string slice of the Private subnets from the
 // cluster config VPC subnets spec
 func (si *SpecConfigImporter) SubnetsPrivate() *gfnt.Value {
+	return gfnt.NewStringSlice(si.vpc.Subnets.Private.WithIDs()...)
+}
+
+// SubnetsPublicLocal returns a gfnt string slice of the Public subnets from the
+// cluster config VPC subnets spec
+func (si *SpecConfigImporter) SubnetsPublicAllZones() *gfnt.Value {
+	return gfnt.NewStringSlice(si.vpc.Subnets.Public.WithIDs()...)
+}
+
+// SubnetsPrivateLocal returns a gfnt string slice of the Private subnets from the
+// cluster config VPC subnets spec
+func (si *SpecConfigImporter) SubnetsPrivateAllZones() *gfnt.Value {
 	return gfnt.NewStringSlice(si.vpc.Subnets.Private.WithIDs()...)
 }

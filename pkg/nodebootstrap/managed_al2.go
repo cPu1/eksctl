@@ -95,7 +95,7 @@ func makeCustomAMIUserData(ng *api.NodeGroupBase, mimeBoundary string) (string, 
 func makeMaxPodsScript(maxPods int) string {
 	script := `#!/bin/sh
 set -ex
-sed -i -E "s/^USE_MAX_PODS=\"\\$\{USE_MAX_PODS:-true}\"/USE_MAX_PODS=false/" /etc/eks/bootstrap.sh
+sed -E "s/^USE_MAX_PODS=\"\\$\{USE_MAX_PODS:-true}\"/USE_MAX_PODS=false/" /etc/eks/bootstrap.sh
 KUBELET_CONFIG=/etc/kubernetes/kubelet/kubelet-config.json
 `
 	script += fmt.Sprintf(`echo "$(jq ".maxPods=%v" $KUBELET_CONFIG)" > $KUBELET_CONFIG`, maxPods)

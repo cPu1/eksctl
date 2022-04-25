@@ -4,6 +4,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
+
 	"github.com/weaveworks/eksctl/pkg/utils/ipnet"
 )
 
@@ -27,7 +28,7 @@ type subnetCase struct {
 var _ = Describe("VPC Configuration", func() {
 	DescribeTable("Subnet import",
 		func(e subnetCase) {
-			err := doImportSubnet(e.subnets, e.az, e.subnetID, e.cidr)
+			err := doImportSubnet(e.subnets, e.az, e.subnetID, e.cidr, false)
 			if e.err {
 				Expect(err).To(HaveOccurred())
 			} else {
@@ -165,7 +166,7 @@ var _ = Describe("VPC Configuration", func() {
 				},
 			}),
 		}),
-		Entry("ID disamiguating list", subnetCase{
+		Entry("ID disambiguating list", subnetCase{
 			subnets: AZSubnetMappingFromMap(map[string]AZSubnetSpec{
 				"main-subnet": {
 					AZ: "us-east-1a",

@@ -1256,14 +1256,12 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 	})
 
 	Describe("AssignSubnets", func() {
-		var ngBase *api.NodeGroupBase
 		BeforeEach(func() {
-			ngBase = ng.NodeGroupBase
 			fakeVPCImporter.SubnetsPublicReturns(gfnt.NewString("subnet-1"))
 		})
 
 		It("returns public subnets", func() {
-			subnets, err := builder.AssignSubnets(context.Background(), ngBase, fakeVPCImporter, cfg, nil)
+			subnets, err := builder.AssignSubnets(context.Background(), ng, fakeVPCImporter, cfg, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(subnets).To(Equal(gfnt.NewString("subnet-1")))
 		})
@@ -1280,9 +1278,9 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 					},
 				},
 			}, nil)
-			ngBase := ngBase.DeepCopy()
-			ngBase.Subnets = []string{"fake-id"}
-			subnets, err := builder.AssignSubnets(context.Background(), ngBase, fakeVPCImporter, cfg, mockEC2)
+			ngCopy := ng.DeepCopy()
+			ngCopy.Subnets = []string{"fake-id"}
+			subnets, err := builder.AssignSubnets(context.Background(), ng, fakeVPCImporter, cfg, mockEC2)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(subnets).To(Equal(gfnt.NewStringSlice("fake-id")))
 		})
@@ -1299,9 +1297,9 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 					},
 				},
 			}, nil)
-			ngBase := ngBase.DeepCopy()
-			ngBase.Subnets = []string{"fake-id"}
-			_, err := builder.AssignSubnets(context.Background(), ngBase, fakeVPCImporter, cfg, mockEC2)
+			ngCopy := ng.DeepCopy()
+			ngCopy.Subnets = []string{"fake-id"}
+			_, err := builder.AssignSubnets(context.Background(), ngCopy, fakeVPCImporter, cfg, mockEC2)
 			Expect(err).To(MatchError(ContainSubstring("subnet with id \"fake-id\" is not in the attached vpc with id \"\"")))
 		})
 
@@ -1310,20 +1308,20 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 			mockEC2.On("DescribeSubnets", mock.Anything, &ec2.DescribeSubnetsInput{
 				SubnetIds: []string{"fake-id"},
 			}).Return(nil, errors.New("nope"))
-			ngBase := ngBase.DeepCopy()
-			ngBase.Subnets = []string{"fake-id"}
-			_, err := builder.AssignSubnets(context.Background(), ngBase, fakeVPCImporter, cfg, mockEC2)
+			ngCopy := ng.DeepCopy()
+			ngCopy.Subnets = []string{"fake-id"}
+			_, err := builder.AssignSubnets(context.Background(), ngCopy, fakeVPCImporter, cfg, mockEC2)
 			Expect(err).To(MatchError(ContainSubstring("nope")))
 		})
 
 		Context("when private networking is enabled", func() {
 			BeforeEach(func() {
 				fakeVPCImporter.SubnetsPrivateReturns(gfnt.NewString("subnet-2"))
-				ngBase.PrivateNetworking = true
+				ng.PrivateNetworking = true
 			})
 
 			It("returns private subnets", func() {
-				subnets, err := builder.AssignSubnets(context.Background(), ngBase, fakeVPCImporter, cfg, nil)
+				subnets, err := builder.AssignSubnets(context.Background(), ng, fakeVPCImporter, cfg, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(subnets).To(Equal(gfnt.NewString("subnet-2")))
 			})
@@ -1331,24 +1329,24 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 
 		Context("when AvailabilityZones are set", func() {
 			BeforeEach(func() {
-				ngBase.Subnets = []string{publicSubnet1, publicSubnet2}
+				ng.Subnets = []string{publicSubnet1, publicSubnet2}
 				cfg.AvailabilityZones = []string{"us-west-2a", "us-west-2b"}
 			})
 
 			It("maps subnets to azs", func() {
-				subnets, err := builder.AssignSubnets(context.Background(), ngBase, fakeVPCImporter, cfg, nil)
+				subnets, err := builder.AssignSubnets(context.Background(), ng, fakeVPCImporter, cfg, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(subnets).To(Equal(gfnt.NewStringSlice(publicSubnet1, publicSubnet2)))
 			})
 
 			Context("private networking is enabled", func() {
 				BeforeEach(func() {
-					ngBase.Subnets = []string{privateSubnet1, privateSubnet2}
-					ngBase.PrivateNetworking = true
+					ng.Subnets = []string{privateSubnet1, privateSubnet2}
+					ng.PrivateNetworking = true
 				})
 
 				It("maps private subnets to azs", func() {
-					subnets, err := builder.AssignSubnets(context.Background(), ngBase, fakeVPCImporter, cfg, nil)
+					subnets, err := builder.AssignSubnets(context.Background(), ng, fakeVPCImporter, cfg, nil)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(subnets).To(Equal(gfnt.NewStringSlice(privateSubnet1, privateSubnet2)))
 				})
@@ -1356,7 +1354,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 
 			Context("selecting subnets per az fails", func() {
 				BeforeEach(func() {
-					ngBase.Subnets = []string{"not-a-thing"}
+					ng.Subnets = []string{"not-a-thing"}
 				})
 
 				It("returns the error", func() {
@@ -1364,7 +1362,7 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 					mockEC2.On("DescribeSubnets", mock.Anything, &ec2.DescribeSubnetsInput{
 						SubnetIds: []string{"not-a-thing"},
 					}).Return(nil, errors.New("nope"))
-					_, err := builder.AssignSubnets(context.Background(), ngBase, fakeVPCImporter, cfg, mockEC2)
+					_, err := builder.AssignSubnets(context.Background(), ng, fakeVPCImporter, cfg, mockEC2)
 					Expect(err).To(MatchError(ContainSubstring("couldn't find public subnets")))
 				})
 			})
@@ -1372,12 +1370,12 @@ var _ = Describe("Unmanaged NodeGroup Template Builder", func() {
 
 		Context("when EFA is enabled and > 1 subnets are set", func() {
 			BeforeEach(func() {
-				ngBase.Subnets = []string{publicSubnet1, publicSubnet2}
-				ngBase.EFAEnabled = aws.Bool(true)
+				ng.Subnets = []string{publicSubnet1, publicSubnet2}
+				ng.EFAEnabled = aws.Bool(true)
 			})
 
 			It("choses only the first subnet", func() {
-				subnets, err := builder.AssignSubnets(context.Background(), ngBase, fakeVPCImporter, cfg, nil)
+				subnets, err := builder.AssignSubnets(context.Background(), ng, fakeVPCImporter, cfg, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(subnets).To(Equal(gfnt.NewStringSlice(publicSubnet1)))
 			})

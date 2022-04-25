@@ -714,6 +714,10 @@ func ValidateNodeGroup(i int, ng *NodeGroup) error {
 		}
 	}
 
+	if len(ng.LocalZones) > 0 && len(ng.AvailabilityZones) > 0 {
+		return errors.New("cannot specify both localZones and availabilityZones")
+	}
+
 	return nil
 }
 

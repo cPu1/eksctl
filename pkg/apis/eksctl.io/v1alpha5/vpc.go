@@ -34,7 +34,7 @@ const (
 type AZSubnetMapping map[string]AZSubnetSpec
 
 func NewAZSubnetMapping() AZSubnetMapping {
-	return AZSubnetMapping(make(map[string]AZSubnetSpec))
+	return make(map[string]AZSubnetSpec)
 }
 
 func AZSubnetMappingFromMap(m map[string]AZSubnetSpec) AZSubnetMapping {
@@ -45,7 +45,7 @@ func AZSubnetMappingFromMap(m map[string]AZSubnetSpec) AZSubnetMapping {
 			m[k] = v
 		}
 	}
-	return AZSubnetMapping(m)
+	return m
 }
 
 func (m *AZSubnetMapping) Set(name string, spec AZSubnetSpec) {
@@ -135,6 +135,11 @@ type (
 		// VPCs](/usage/vpc-networking/#use-existing-vpc-other-custom-configuration).
 		// +optional
 		Subnets *ClusterSubnets `json:"subnets,omitempty"`
+
+		// LocalZoneSubnets represents subnets in local zones.
+		// This field is used internally and is not a part of the ClusterConfig schema.
+		LocalZoneSubnets *ClusterSubnets `json:"-"`
+
 		// for additional CIDR associations, e.g. a CIDR for
 		// private subnets or any ad-hoc subnets
 		// +optional
@@ -171,15 +176,27 @@ type (
 		Private AZSubnetMapping `json:"private,omitempty"`
 		Public  AZSubnetMapping `json:"public,omitempty"`
 	}
+
 	// SubnetTopology can be SubnetTopologyPrivate or SubnetTopologyPublic
 	SubnetTopology string
 	AZSubnetSpec   struct {
 		// +optional
 		ID string `json:"id,omitempty"`
-		// AZ can be omitted if the key is an AZ
+		// AZ is the zone name for this subnet, it can either be an availability zone name
+		// or a local zone name.
+		// AZ can be omitted if the key is an AZ.
+		// TODO: rename to zone?
 		// +optional
 		AZ string `json:"az,omitempty"`
 		// +optional
+		CIDR *ipnet.IPNet `json:"cidr,omitempty"`
+
+		CIDRIndex int `json:"-"`
+	}
+	SubnetSpec struct {
+		// Zone holds the zone name
+		Zone string `json:"zone,omitempty"`
+		// CIDR holds the CIDR for the subnet
 		CIDR *ipnet.IPNet `json:"cidr,omitempty"`
 	}
 	// Network holds ID and CIDR
@@ -240,7 +257,7 @@ func DefaultCIDR() ipnet.IPNet {
 }
 
 // ImportSubnet loads a given subnet into cluster config
-func (c *ClusterConfig) ImportSubnet(topology SubnetTopology, az, subnetID, cidr string) error {
+func (c *ClusterConfig) ImportSubnet(subnetMapping AZSubnetMapping, zone, subnetID, cidr string) error {
 	if c.VPC.Subnets == nil {
 		c.VPC.Subnets = &ClusterSubnets{
 			Private: NewAZSubnetMapping(),
@@ -248,17 +265,9 @@ func (c *ClusterConfig) ImportSubnet(topology SubnetTopology, az, subnetID, cidr
 		}
 	}
 
-	var subnetMapping AZSubnetMapping
-	switch topology {
-	case SubnetTopologyPrivate:
-		subnetMapping = c.VPC.Subnets.Private
-	case SubnetTopologyPublic:
-		subnetMapping = c.VPC.Subnets.Public
-	default:
-		panic(fmt.Sprintf("unexpected subnet topology: %s", topology))
-	}
+	fmt.Println("imports", subnetMapping)
 
-	if err := doImportSubnet(subnetMapping, az, subnetID, cidr); err != nil {
+	if err := doImportSubnet(subnetMapping, zone, subnetID, cidr); err != nil {
 		return errors.Wrapf(err, "couldn't import subnet %s", subnetID)
 	}
 	return nil
@@ -336,7 +345,7 @@ func (c *ClusterConfig) SubnetInfo() string {
 
 // HasAnySubnets checks if any subnets were set
 func (c *ClusterConfig) HasAnySubnets() bool {
-	return c.VPC.Subnets != nil && len(c.VPC.Subnets.Private)+len(c.VPC.Subnets.Public) != 0
+	return c.VPC.Subnets != nil && (len(c.VPC.Subnets.Private) > 0 || len(c.VPC.Subnets.Public) > 0)
 }
 
 // HasSufficientPrivateSubnets validates if there is a sufficient

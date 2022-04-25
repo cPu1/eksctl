@@ -158,7 +158,7 @@ var _ = Describe("VPC", func() {
 
 	DescribeTable("Set subnets",
 		func(subnetsCase setSubnetsCase) {
-			err := SetSubnets(subnetsCase.vpc, subnetsCase.availabilityZones)
+			err := SetSubnets(subnetsCase.vpc, subnetsCase.availabilityZones, nil)
 			if subnetsCase.error != nil {
 				Expect(err).To(MatchError(subnetsCase.error.Error()))
 			} else {
@@ -928,7 +928,7 @@ var _ = Describe("VPC", func() {
 
 	DescribeTable("select subnets",
 		func(e selectSubnetsCase) {
-			ids, err := SelectNodeGroupSubnets(context.Background(), e.nodegroupAZs, e.nodegroupSubnets, e.subnets, nil, "")
+			ids, err := SelectNodeGroupSubnets(context.Background(), e.nodegroupAZs, nil, e.nodegroupSubnets, e.subnets, nil, "")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(ids).To(ConsistOf(e.expectIDs))
 		},
@@ -1004,7 +1004,7 @@ var _ = Describe("VPC", func() {
 						},
 					},
 				}, nil)
-				ids, err := SelectNodeGroupSubnets(context.Background(), []string{az}, []string{subnetID}, api.AZSubnetMappingFromMap(azMap), mockEC2, vpcID)
+				ids, err := SelectNodeGroupSubnets(context.Background(), []string{az}, nil, []string{subnetID}, api.AZSubnetMappingFromMap(azMap), mockEC2, vpcID)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(ids).To(ConsistOf("id-1", "id-2", subnetID))
 			})
@@ -1015,7 +1015,7 @@ var _ = Describe("VPC", func() {
 				mockEC2.On("DescribeSubnets", Anything, &ec2.DescribeSubnetsInput{
 					SubnetIds: []string{subnetID},
 				}).Return(nil, errors.New("nope"))
-				_, err := SelectNodeGroupSubnets(context.Background(), []string{az}, []string{subnetID}, api.AZSubnetMappingFromMap(azMap), mockEC2, vpcID)
+				_, err := SelectNodeGroupSubnets(context.Background(), []string{az}, nil, []string{subnetID}, api.AZSubnetMappingFromMap(azMap), mockEC2, vpcID)
 				Expect(err).To(MatchError(ContainSubstring("nope")))
 			})
 		})
@@ -1032,7 +1032,7 @@ var _ = Describe("VPC", func() {
 						},
 					},
 				}, nil)
-				_, err := SelectNodeGroupSubnets(context.Background(), []string{az}, []string{subnetID}, api.AZSubnetMappingFromMap(azMap), mockEC2, vpcID)
+				_, err := SelectNodeGroupSubnets(context.Background(), []string{az}, nil, []string{subnetID}, api.AZSubnetMappingFromMap(azMap), mockEC2, vpcID)
 				Expect(err).To(MatchError(ContainSubstring("subnet with id \"user-defined-id\" is not in the attached vpc with id \"vpc-id\"")))
 			})
 		})

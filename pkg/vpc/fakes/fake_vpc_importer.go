@@ -59,6 +59,16 @@ type FakeImporter struct {
 	subnetsPrivateReturnsOnCall map[int]struct {
 		result1 *types.Value
 	}
+	SubnetsPrivateAllZonesStub        func() *types.Value
+	subnetsPrivateAllZonesMutex       sync.RWMutex
+	subnetsPrivateAllZonesArgsForCall []struct {
+	}
+	subnetsPrivateAllZonesReturns struct {
+		result1 *types.Value
+	}
+	subnetsPrivateAllZonesReturnsOnCall map[int]struct {
+		result1 *types.Value
+	}
 	SubnetsPublicStub        func() *types.Value
 	subnetsPublicMutex       sync.RWMutex
 	subnetsPublicArgsForCall []struct {
@@ -67,6 +77,16 @@ type FakeImporter struct {
 		result1 *types.Value
 	}
 	subnetsPublicReturnsOnCall map[int]struct {
+		result1 *types.Value
+	}
+	SubnetsPublicAllZonesStub        func() *types.Value
+	subnetsPublicAllZonesMutex       sync.RWMutex
+	subnetsPublicAllZonesArgsForCall []struct {
+	}
+	subnetsPublicAllZonesReturns struct {
+		result1 *types.Value
+	}
+	subnetsPublicAllZonesReturnsOnCall map[int]struct {
 		result1 *types.Value
 	}
 	VPCStub        func() *types.Value
@@ -348,6 +368,59 @@ func (fake *FakeImporter) SubnetsPrivateReturnsOnCall(i int, result1 *types.Valu
 	}{result1}
 }
 
+func (fake *FakeImporter) SubnetsPrivateAllZones() *types.Value {
+	fake.subnetsPrivateAllZonesMutex.Lock()
+	ret, specificReturn := fake.subnetsPrivateAllZonesReturnsOnCall[len(fake.subnetsPrivateAllZonesArgsForCall)]
+	fake.subnetsPrivateAllZonesArgsForCall = append(fake.subnetsPrivateAllZonesArgsForCall, struct {
+	}{})
+	stub := fake.SubnetsPrivateAllZonesStub
+	fakeReturns := fake.subnetsPrivateAllZonesReturns
+	fake.recordInvocation("SubnetsPrivateAllZones", []interface{}{})
+	fake.subnetsPrivateAllZonesMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeImporter) SubnetsPrivateAllZonesCallCount() int {
+	fake.subnetsPrivateAllZonesMutex.RLock()
+	defer fake.subnetsPrivateAllZonesMutex.RUnlock()
+	return len(fake.subnetsPrivateAllZonesArgsForCall)
+}
+
+func (fake *FakeImporter) SubnetsPrivateAllZonesCalls(stub func() *types.Value) {
+	fake.subnetsPrivateAllZonesMutex.Lock()
+	defer fake.subnetsPrivateAllZonesMutex.Unlock()
+	fake.SubnetsPrivateAllZonesStub = stub
+}
+
+func (fake *FakeImporter) SubnetsPrivateAllZonesReturns(result1 *types.Value) {
+	fake.subnetsPrivateAllZonesMutex.Lock()
+	defer fake.subnetsPrivateAllZonesMutex.Unlock()
+	fake.SubnetsPrivateAllZonesStub = nil
+	fake.subnetsPrivateAllZonesReturns = struct {
+		result1 *types.Value
+	}{result1}
+}
+
+func (fake *FakeImporter) SubnetsPrivateAllZonesReturnsOnCall(i int, result1 *types.Value) {
+	fake.subnetsPrivateAllZonesMutex.Lock()
+	defer fake.subnetsPrivateAllZonesMutex.Unlock()
+	fake.SubnetsPrivateAllZonesStub = nil
+	if fake.subnetsPrivateAllZonesReturnsOnCall == nil {
+		fake.subnetsPrivateAllZonesReturnsOnCall = make(map[int]struct {
+			result1 *types.Value
+		})
+	}
+	fake.subnetsPrivateAllZonesReturnsOnCall[i] = struct {
+		result1 *types.Value
+	}{result1}
+}
+
 func (fake *FakeImporter) SubnetsPublic() *types.Value {
 	fake.subnetsPublicMutex.Lock()
 	ret, specificReturn := fake.subnetsPublicReturnsOnCall[len(fake.subnetsPublicArgsForCall)]
@@ -397,6 +470,59 @@ func (fake *FakeImporter) SubnetsPublicReturnsOnCall(i int, result1 *types.Value
 		})
 	}
 	fake.subnetsPublicReturnsOnCall[i] = struct {
+		result1 *types.Value
+	}{result1}
+}
+
+func (fake *FakeImporter) SubnetsPublicAllZones() *types.Value {
+	fake.subnetsPublicAllZonesMutex.Lock()
+	ret, specificReturn := fake.subnetsPublicAllZonesReturnsOnCall[len(fake.subnetsPublicAllZonesArgsForCall)]
+	fake.subnetsPublicAllZonesArgsForCall = append(fake.subnetsPublicAllZonesArgsForCall, struct {
+	}{})
+	stub := fake.SubnetsPublicAllZonesStub
+	fakeReturns := fake.subnetsPublicAllZonesReturns
+	fake.recordInvocation("SubnetsPublicAllZones", []interface{}{})
+	fake.subnetsPublicAllZonesMutex.Unlock()
+	if stub != nil {
+		return stub()
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeImporter) SubnetsPublicAllZonesCallCount() int {
+	fake.subnetsPublicAllZonesMutex.RLock()
+	defer fake.subnetsPublicAllZonesMutex.RUnlock()
+	return len(fake.subnetsPublicAllZonesArgsForCall)
+}
+
+func (fake *FakeImporter) SubnetsPublicAllZonesCalls(stub func() *types.Value) {
+	fake.subnetsPublicAllZonesMutex.Lock()
+	defer fake.subnetsPublicAllZonesMutex.Unlock()
+	fake.SubnetsPublicAllZonesStub = stub
+}
+
+func (fake *FakeImporter) SubnetsPublicAllZonesReturns(result1 *types.Value) {
+	fake.subnetsPublicAllZonesMutex.Lock()
+	defer fake.subnetsPublicAllZonesMutex.Unlock()
+	fake.SubnetsPublicAllZonesStub = nil
+	fake.subnetsPublicAllZonesReturns = struct {
+		result1 *types.Value
+	}{result1}
+}
+
+func (fake *FakeImporter) SubnetsPublicAllZonesReturnsOnCall(i int, result1 *types.Value) {
+	fake.subnetsPublicAllZonesMutex.Lock()
+	defer fake.subnetsPublicAllZonesMutex.Unlock()
+	fake.SubnetsPublicAllZonesStub = nil
+	if fake.subnetsPublicAllZonesReturnsOnCall == nil {
+		fake.subnetsPublicAllZonesReturnsOnCall = make(map[int]struct {
+			result1 *types.Value
+		})
+	}
+	fake.subnetsPublicAllZonesReturnsOnCall[i] = struct {
 		result1 *types.Value
 	}{result1}
 }
@@ -467,8 +593,12 @@ func (fake *FakeImporter) Invocations() map[string][][]interface{} {
 	defer fake.sharedNodeSecurityGroupMutex.RUnlock()
 	fake.subnetsPrivateMutex.RLock()
 	defer fake.subnetsPrivateMutex.RUnlock()
+	fake.subnetsPrivateAllZonesMutex.RLock()
+	defer fake.subnetsPrivateAllZonesMutex.RUnlock()
 	fake.subnetsPublicMutex.RLock()
 	defer fake.subnetsPublicMutex.RUnlock()
+	fake.subnetsPublicAllZonesMutex.RLock()
+	defer fake.subnetsPublicAllZonesMutex.RUnlock()
 	fake.vPCMutex.RLock()
 	defer fake.vPCMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}

@@ -98,7 +98,7 @@ func TestManagedPolicyResources(t *testing.T) {
 		},
 	}
 
-	for i, tt := range iamRoleTests {
+	for i, tt := range iamRoleTests[:0] {
 		t.Run(fmt.Sprintf("%d: %s", i, tt.description), func(t *testing.T) {
 			require := require.New(t)
 			clusterConfig := api.NewClusterConfig()
@@ -194,7 +194,7 @@ func TestManagedNodeRole(t *testing.T) {
 		},
 	}
 
-	for i, tt := range nodeRoleTests {
+	for i, tt := range nodeRoleTests[:0] {
 		t.Run(fmt.Sprintf("%d: %s", i, tt.description), func(t *testing.T) {
 			require := require.New(t)
 			clusterConfig := api.NewClusterConfig()

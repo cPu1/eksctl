@@ -50,6 +50,31 @@ func createClusterCmd(cmd *cmdutils.Cmd) {
 	})
 }
 
+/**
+
+1. The decision to place a nodegroup in a local zone must be explicit. If the subnets in local zones were created by eksctl
+and no subnets, AZs or local zones are specified in the nodegroup config, eksctl will not use a local zone.
+2. Subnets in a local zone cannot be treated the same way as subnets in AZs.
+3. To create a private nodegroup in a local zone, either
+  a. Both `localZones` and `privateNetworking` must be set, or
+  b. `privateNetworking` must be set and `subnets` must contain at least one subnet ID in a local zone (can it have a mix of AZs and local zones?)
+4. To create a nodegroup in a local zone, either `localZones` must be set or `subnets` must contain subnet IDs that were created in local zones.
+5. If a user wishes to create a nodegroup in only local zones in a cluster where eksctl had created subnets in local zones, there is no way to
+tell eksctl to create a nodegroup in all the existing subnets in local zones.
+6. Validate that `nodegroup.subnets` are all subnets created in regular AZs.
+7. Allow specifying both AZs and localZones for a nodegroup?
+Validations:
+- vpc.id with localzones is not allowed
+- subnet
+- fullyPrivate clusters are not supported with localZones
+- Not supported with IPV6 clusters
+8. EFA cannot be used with local zones
+
+Bug:
+subnets: [s-1, s-2, s-3]
+More than the subnets created by eksctl will throw an error
+*/
+
 func createClusterCmdWithRunFunc(cmd *cmdutils.Cmd, runFunc func(cmd *cmdutils.Cmd, ngFilter *filter.NodeGroupFilter, params *cmdutils.CreateClusterCmdParams) error) {
 	cfg := api.NewClusterConfig()
 	ng := api.NewNodeGroup()
@@ -100,8 +125,8 @@ func createClusterCmdWithRunFunc(cmd *cmdutils.Cmd, runFunc func(cmd *cmdutils.C
 	cmd.FlagSetGroup.InFlagSet("VPC networking", func(fs *pflag.FlagSet) {
 		fs.IPNetVar(&cfg.VPC.CIDR.IPNet, "vpc-cidr", cfg.VPC.CIDR.IPNet, "global CIDR to use for VPC")
 		params.Subnets = map[api.SubnetTopology]*[]string{
-			api.SubnetTopologyPrivate: fs.StringSlice("vpc-private-subnets", nil, "re-use private subnets of an existing VPC"),
-			api.SubnetTopologyPublic:  fs.StringSlice("vpc-public-subnets", nil, "re-use public subnets of an existing VPC"),
+			api.SubnetTopologyPrivate: fs.StringSlice("vpc-private-subnets", nil, "re-use private subnets of an existing VPC; the subnets must exist in availability zones and not other types of zones"),
+			api.SubnetTopologyPublic:  fs.StringSlice("vpc-public-subnets", nil, "re-use public subnets of an existing VPC; the subnets must exist in availability zones and not other types of zones"),
 		}
 		fs.StringVar(&params.KopsClusterNameForVPC, "vpc-from-kops-cluster", "", "re-use VPC from a given kops cluster")
 		fs.StringVar(cfg.VPC.NAT.Gateway, "vpc-nat-mode", api.ClusterSingleNAT, "VPC NAT mode, valid options: HighlyAvailable, Single, Disable")
@@ -188,11 +213,12 @@ func doCreateCluster(cmd *cmdutils.Cmd, ngFilter *filter.NodeGroupFilter, params
 		// treat remote state as authority over local state
 		cfg.VPC.CIDR = nil
 		// load subnets from local map created from flags, into the config
-		for topology := range params.Subnets {
-			if err := vpc.ImportSubnetsFromIDList(ctx, ctl.Provider.EC2(), cfg, topology, *params.Subnets[topology]); err != nil {
+		// TODO: validate zones
+		/*for topology := range params.Subnets {
+			if err := vpc.ImportSubnetsFromIDList(ctx, ctl.Provider.EC2(), cfg, *params.Subnets[topology], nil); err != nil {
 				return err
 			}
-		}
+		}*/
 	}
 	logFiltered := cmdutils.ApplyFilter(cfg, ngFilter)
 	kubeNodeGroups := cmdutils.ToKubeNodeGroups(cfg)
@@ -436,6 +462,10 @@ func createOrImportVPC(ctx context.Context, cmd *cmdutils.Cmd, cfg *api.ClusterC
 			return err
 		}
 
+		if err := eks.ValidateLocalZones(ctx, ctl.Provider.EC2(), cfg.LocalZones, ctl.Provider.Region()); err != nil {
+			return err
+		}
+
 		// Skip setting subnets
 		// The default subnet config set by SetSubnets will fail validation on a subsequent run of `create cluster`
 		// because those fields indicate usage of pre-existing VPC and subnets
@@ -444,7 +474,7 @@ func createOrImportVPC(ctx context.Context, cmd *cmdutils.Cmd, cfg *api.ClusterC
 			return nil
 		}
 
-		return vpc.SetSubnets(cfg.VPC, cfg.AvailabilityZones)
+		return vpc.SetSubnets(cfg.VPC, cfg.AvailabilityZones, cfg.LocalZones)
 	}
 
 	if params.KopsClusterNameForVPC != "" {

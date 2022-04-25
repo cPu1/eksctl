@@ -235,7 +235,7 @@ func (n *NodeGroupResourceSet) addResourcesForNodeGroup(ctx context.Context) err
 		LaunchTemplateData: launchTemplateData,
 	})
 
-	vpcZoneIdentifier, err := AssignSubnets(ctx, n.spec.NodeGroupBase, n.vpcImporter, n.clusterSpec, n.ec2API)
+	vpcZoneIdentifier, err := AssignSubnets(ctx, n.spec, n.vpcImporter, n.clusterSpec, n.ec2API)
 	if err != nil {
 		return err
 	}
@@ -328,34 +328,107 @@ func generateNodeName(ng *api.NodeGroupBase, meta *api.ClusterMeta) string {
 	return strings.Join(nameParts, "")
 }
 
-// AssignSubnets subnets based on the specified availability zones
-func AssignSubnets(ctx context.Context, spec *api.NodeGroupBase, vpcImporter vpc.Importer, clusterSpec *api.ClusterConfig, ec2API awsapi.EC2) (*gfnt.Value, error) {
+// AssignSubnets assigns subnets based on the specified availability zones
+// TODO
+func AssignSubnets(ctx context.Context, np api.NodePool, vpcImporter vpc.Importer, clusterConfig *api.ClusterConfig, ec2API awsapi.EC2) (*gfnt.Value, error) {
 	// Currently, goformation type system doesn't allow specifying `VPCZoneIdentifier: { "Fn::ImportValue": ... }`,
 	// and tags don't have `PropagateAtLaunch` field, so we have a custom method here until this gets resolved
 
-	if len(spec.AvailabilityZones) > 0 || len(spec.Subnets) > 0 || api.IsEnabled(spec.EFAEnabled) {
-		subnets := clusterSpec.VPC.Subnets.Public
-		typ := "public"
-		if spec.PrivateNetworking {
-			subnets = clusterSpec.VPC.Subnets.Private
-			typ = "private"
+	fmt.Println("assigning", np, vpcImporter, clusterConfig)
+	ng := np.BaseNodeGroup()
+	if nodeGroup, ok := np.(*api.NodeGroup); (!ok || len(nodeGroup.LocalZones) == 0) && len(ng.AvailabilityZones) == 0 && len(ng.Subnets) == 0 {
+		if ng.PrivateNetworking {
+			return vpcImporter.SubnetsPrivate(), nil
 		}
-		subnetIDs, err := vpc.SelectNodeGroupSubnets(ctx, spec.AvailabilityZones, spec.Subnets, subnets, ec2API, clusterSpec.VPC.ID)
-		if api.IsEnabled(spec.EFAEnabled) && len(subnetIDs) > 1 {
-			subnetIDs = []string{subnetIDs[0]}
-			logger.Info("EFA requires all nodes be in a single subnet, arbitrarily choosing one: %s", subnetIDs)
-		}
-		return gfnt.NewStringSlice(subnetIDs...), errors.Wrapf(err, "couldn't find %s subnets", typ)
+		return vpcImporter.SubnetsPublic(), nil
 	}
 
-	var subnets *gfnt.Value
-	if spec.PrivateNetworking {
-		subnets = vpcImporter.SubnetsPrivate()
+	var (
+		subnetMapping api.AZSubnetMapping
+		zones         []string
+	)
+
+	var networkType string
+	if ng.PrivateNetworking {
+		networkType = "private"
 	} else {
-		subnets = vpcImporter.SubnetsPublic()
+		networkType = "public"
+	}
+	fmt.Println("assigning", ng.AvailabilityZones)
+
+	if nodeGroup, ok := np.(*api.NodeGroup); ok && len(nodeGroup.LocalZones) > 0 {
+		zones = nodeGroup.LocalZones
+		if nodeGroup.PrivateNetworking {
+			subnetMapping = clusterConfig.VPC.LocalZoneSubnets.Private
+		} else {
+			subnetMapping = clusterConfig.VPC.LocalZoneSubnets.Public
+		}
+	} else if len(ng.AvailabilityZones) > 0 {
+		fmt.Println("zones11", ng.AvailabilityZones)
+		zones = ng.AvailabilityZones
+		if ng.PrivateNetworking {
+			subnetMapping = clusterConfig.VPC.Subnets.Private
+		} else {
+			subnetMapping = clusterConfig.VPC.Subnets.Public
+		}
 	}
 
-	return subnets, nil
+	fmt.Println("final zones", zones, subnetMapping)
+
+	makeErrorDesc := func() string {
+		return fmt.Sprintf("(allSubnets=%#v localZones=%#v subnets=%#v)", subnetMapping, zones, ng.Subnets)
+	}
+
+	var subnetIDs []string
+	if len(zones) > 0 {
+		var err error
+		if subnetIDs, err = vpc.SelectNodeGroupZoneSubnets(zones, subnetMapping); err != nil {
+			return nil, fmt.Errorf("could not find %s subnets for zones %q %s: %w", networkType, zones, makeErrorDesc(), err)
+		}
+	}
+
+	if len(ng.Subnets) > 0 {
+		zoneTypeMapping, err := vpc.DiscoverZoneTypes(ctx, ec2API, clusterConfig.Metadata.Region)
+		if err != nil {
+			return nil, fmt.Errorf("error discovering zone types: %w", err)
+		}
+
+		// TODO: USEME
+		fmt.Println("zone types", zoneTypeMapping)
+		validateZoneType := func(zoneType vpc.ZoneType) error {
+			if zoneType == vpc.ZoneTypeAvailabilityZone {
+				logger.Warning("subnets contain a mix of both local and availability zones")
+			}
+			return nil
+		}
+		if _, ok := np.(*api.NodeGroup); !ok {
+			validateZoneType = func(zoneType vpc.ZoneType) error {
+				if zoneType == vpc.ZoneTypeLocalZone {
+					return fmt.Errorf("managed nodegroups cannot be launched in local zones")
+				}
+				return nil
+			}
+		}
+
+		subnetsFromIDs, err := vpc.SelectNodeGroupSubnetsFromIDs(ctx, ng.Subnets, subnetMapping, clusterConfig.VPC.ID, ec2API, func(zone string) error {
+			zoneType, ok := zoneTypeMapping[zone]
+			if !ok {
+				return fmt.Errorf("unexpected error finding zone type for zone %q", zone)
+			}
+			return validateZoneType(zoneType)
+		})
+		if err != nil {
+			return nil, fmt.Errorf("could not select subnets from subnet IDs %s: %w", makeErrorDesc(), err)
+		}
+		subnetIDs = append(subnetIDs, subnetsFromIDs...)
+	}
+
+	if api.IsEnabled(ng.EFAEnabled) && len(subnetIDs) > 0 {
+		subnetIDs = subnetIDs[:1]
+		logger.Info("EFA requires all nodes be in a single subnet, arbitrarily choosing one: %s", subnetIDs)
+	}
+
+	return gfnt.NewStringSlice(subnetIDs...), nil
 }
 
 // GetAllOutputs collects all outputs of the nodegroup

@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -232,6 +233,7 @@ func (c *StackCollection) createStackRequest(ctx context.Context, stackName stri
 	if err != nil {
 		return nil, errors.Wrapf(err, "rendering template for %q stack", *stack.StackName)
 	}
+	os.WriteFile("template22.json", templateBody, os.ModePerm)
 
 	if err := c.DoCreateStackRequest(ctx, stack, TemplateBody(templateBody), tags, parameters, resourceSet.WithIAM(), resourceSet.WithNamedIAM()); err != nil {
 		return nil, err

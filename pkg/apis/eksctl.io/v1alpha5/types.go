@@ -733,6 +733,11 @@ type ClusterConfig struct {
 	// +optional
 	AvailabilityZones []string `json:"availabilityZones,omitempty"`
 
+	// LocalZones specifies a list of local zones where the subnets should be created.
+	// Only self-managed nodegroups can be launched in local zones. These subnets are not passed to EKS.
+	// +optional
+	LocalZones []string `json:"localZones,omitempty"`
+
 	// See [CloudWatch support](/usage/cloudwatch-cluster-logging/)
 	// +optional
 	CloudWatch *ClusterCloudWatch `json:"cloudWatch,omitempty"`
@@ -839,6 +844,16 @@ func (c *ClusterConfig) AppendAvailabilityZone(newAZ string) {
 		}
 	}
 	c.AvailabilityZones = append(c.AvailabilityZones, newAZ)
+}
+
+// AppendLocalZone appends a new local zone to LocalZones.
+func (c *ClusterConfig) AppendLocalZone(localZone string) {
+	for _, lz := range c.LocalZones {
+		if lz == localZone {
+			return
+		}
+	}
+	c.LocalZones = append(c.LocalZones, localZone)
 }
 
 func (c *ClusterConfig) IPv6Enabled() bool {
@@ -1005,6 +1020,11 @@ type NodeGroup struct {
 	// MaxInstanceLifetime defines the maximum amount of time in seconds an instance stays alive.
 	// +optional
 	MaxInstanceLifetime *int `json:"maxInstanceLifetime,omitempty"`
+
+	// LocalZones specifies a list of local zones where the nodegroup should be launched.
+	// The cluster should have been created with all of the local zones specified in this field.
+	// +optional
+	LocalZones []string `json:"localZones"`
 }
 
 // GetContainerRuntime returns the container runtime.
