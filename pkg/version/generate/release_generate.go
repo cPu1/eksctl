@@ -31,8 +31,12 @@ func main() {
 	switch command {
 	case "release":
 		newVersion, newPreRelease = prepareRelease()
+		fmt.Println(newPreRelease)
+		return
 	case "release-candidate":
 		newVersion, newPreRelease = prepareReleaseCandidate()
+		fmt.Println(newPreRelease)
+		return
 	case "development":
 		newVersion, newPreRelease = nextDevelopmentIteration()
 	case "full-version":
