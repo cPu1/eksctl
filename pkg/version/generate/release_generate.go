@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -31,12 +32,20 @@ func main() {
 	switch command {
 	case "release":
 		newVersion, newPreRelease = prepareRelease()
-		fmt.Println(newPreRelease)
-		return
 	case "release-candidate":
 		newVersion, newPreRelease = prepareReleaseCandidate()
-		fmt.Println(newPreRelease)
-		return
+	case "pre-release-id":
+		_, id := prepareReleaseCandidate()
+		fmt.Println(id)
+	case "next-pre-release-id":
+		if len(os.Args) != 3 {
+			log.Fatalf("usage: release_generate %s <rc-version>", command)
+		}
+		next, err := nextPreReleaseID(os.Args[2])
+		if err != nil {
+			log.Fatalf("error generating next pre-release ID: %v", err)
+		}
+		fmt.Println(next)
 	case "development":
 		newVersion, newPreRelease = nextDevelopmentIteration()
 	case "full-version":
@@ -77,6 +86,27 @@ func prepareReleaseCandidate() (string, string) {
 		return version.Version, fmt.Sprintf("rc.%d", newRC)
 	}
 	return version.Version, defaultReleaseCandidate
+}
+
+func nextPreReleaseID(preReleaseVersion string) (string, error) {
+	ver, err := semver.Parse(preReleaseVersion)
+	if err != nil {
+		return "", fmt.Errorf("invalid pre-release version: %w", err)
+	}
+	if len(ver.Pre) == 0 {
+		return defaultReleaseCandidate, nil
+	}
+
+	if len(ver.Pre) != 2 {
+		return "", errors.New("unexpected format for PR version")
+	}
+	id := ver.Pre[1]
+	if !id.IsNumeric() {
+		return "", fmt.Errorf("expected PR version to be numeric; got %q", id.String())
+	}
+
+	return fmt.Sprintf("rc.%d", id.VersionNum+1), nil
+
 }
 
 func printMajorMinor() string {

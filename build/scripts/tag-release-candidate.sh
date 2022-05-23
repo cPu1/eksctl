@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -x
+
 DIR="${BASH_SOURCE%/*}"
 
 # shellcheck source=tag-common.sh
@@ -21,7 +23,7 @@ candidate_for_version=$(release_generate print-version)
 release_notes_file=$(ensure_release_notes "${candidate_for_version}")
 
 check_prereqs
-check_origin
+#check_origin
 
 git checkout "${default_branch}"
 check_current_branch "${default_branch}"
@@ -36,15 +38,18 @@ check_current_branch "${release_branch}"
 ensure_up_to_date "${release_branch}" || echo "${release_branch} not found in origin, will push new branch upstream."
 
 # Update eksctl version to release-candidate
-rc_version=$(release_generate release-candidate)
-m="Tag ${rc_version} release candidate"
+pre_release_id=$(release_generate next-pre-release-id)
+full_version="${candidate_for_version}-${pre_release_id}"
+m="Tag ${full_version} release candidate"
 
-commit "${m}" "${release_notes_file}"
+#commit "${m}" "${release_notes_file}"
 
-tag_version_and_latest "${m}" "${rc_version}"
+#tag_version_and_latest "${m}" "${full_rc_version}"
+tag_and_push_release "${full_version}" "${m}"
+
 
 # Make PR to release branch
-make_pr "${release_branch}"
+#make_pr "${release_branch}"
 
 # Make PR to update default branch if necessary
 git checkout "${default_branch}"

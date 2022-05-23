@@ -27,5 +27,5 @@ jobs:
         uses: ./.github/actions/setup-identity
         with:
           token: "${{ secrets.WEAVEWORKSBOT_TOKEN }}"
-      - name: Open PRs to release branch and default branch
+      - name: Open PR to release branch and default branch
         run: make prepare-release
