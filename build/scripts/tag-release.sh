@@ -8,7 +8,7 @@ source "${DIR}/tag-common.sh"
 release_branch=$(release_branch)
 
 check_prereqs
-check_origin
+#check_origin
 
 git checkout "${default_branch}"
 check_current_branch "${default_branch}"
