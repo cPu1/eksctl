@@ -21,7 +21,7 @@ function current_branch() {
 }
 
 function release_generate() {
-  go run pkg/version/generate/release_generate.go "${1}"
+  go run pkg/version/generate/release_generate.go "${1}" ${2:+"${2}"}
 }
 
 function check_origin() {

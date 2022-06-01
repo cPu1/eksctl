@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/blang/semver"
@@ -28,71 +27,44 @@ func main() {
 
 	command := os.Args[1]
 
-	var newVersion, newPreRelease string
 	switch command {
-	case "release":
-		newVersion, newPreRelease = prepareRelease()
-	case "release-candidate":
-		newVersion, newPreRelease = prepareReleaseCandidate()
-	case "release-id":
-		// TODO
-		fmt.Println("")
-		return
-	case "pre-release-id":
-		_, id := prepareReleaseCandidate()
-		fmt.Println(id)
-		return
 	case "development":
-		newVersion, newPreRelease = nextDevelopmentIteration()
+		newVersion, newPreRelease := nextDevelopmentIteration()
+		if err := writeVersionToFile(newVersion, newPreRelease, versionFilename); err != nil {
+			log.Fatalf("unable to write file: %s", err.Error())
+		}
+
+		version.Version = newVersion
+		version.PreReleaseID = newPreRelease
+		fmt.Println(version.GetVersion())
 	case "next-pre-release-id":
-		if len(os.Args) != 3 {
-			log.Fatalf("usage: release_generate %s <rc-version>", command)
+		switch len(os.Args) {
+		case 2:
+			fmt.Println(defaultReleaseCandidate)
+			return
+		case 3:
+			next, err := nextPreReleaseID(os.Args[2])
+			if err != nil {
+				log.Fatalf("error generating next pre-release ID: %v", err)
+			}
+			fmt.Println(next)
+			return
+		default:
+			log.Fatalf("usage: release_generate %s <latest-rc-tag>", command)
 		}
-		next, err := nextPreReleaseID(os.Args[2])
-		if err != nil {
-			log.Fatalf("error generating next pre-release ID: %v", err)
-		}
-		fmt.Println(next)
-		return
+
 	case "full-version":
 		fmt.Println(version.GetVersion())
 		return
 	case "print-version":
 		// Print simplified version X.Y.Z
 		fmt.Println(version.Version)
-		return
 	case "print-major-minor-version":
 		fmt.Println(printMajorMinor())
-		return
 	default:
-		log.Fatalf("unknown option %q. Expected 'release', 'release-candidate', 'development', 'print-version' or 'print-major-minor-version'", command)
+		log.Fatalf("unknown option %q. Expected one of %v", command, strings.Join([]string{"development", "next-pre-release-id", "full-version", "print-version", "print-major-minor-version"}, ", "))
 	}
 
-	if err := writeVersionToFile(newVersion, newPreRelease, versionFilename); err != nil {
-		log.Fatalf("unable to write file: %s", err.Error())
-	}
-
-	version.Version = newVersion
-	version.PreReleaseID = newPreRelease
-	fmt.Println(version.GetVersion())
-}
-
-func prepareRelease() (string, string) {
-	return version.Version, ""
-}
-
-// TODO accept the PR ID as an argument.
-func prepareReleaseCandidate() (string, string) {
-	if strings.HasPrefix(version.PreReleaseID, "rc.") {
-		// Next RC
-		rcNumber, err := strconv.Atoi(strings.TrimPrefix(version.PreReleaseID, "rc."))
-		if err != nil {
-			log.Fatalf("cannot parse rc version from pre-release id %s", version.PreReleaseID)
-		}
-		newRC := rcNumber + 1
-		return version.Version, fmt.Sprintf("rc.%d", newRC)
-	}
-	return version.Version, defaultReleaseCandidate
 }
 
 func nextPreReleaseID(latestPreReleaseVersion string) (string, error) {

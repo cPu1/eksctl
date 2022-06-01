@@ -19,7 +19,7 @@ if [ ! -f "${RELEASE_NOTES_FILE}" ]; then
 fi
 
 # Update eksctl version to release-candidate
-pre_release_id=$(release_generate pre-release-id)
+pre_release_id="${tag#*-}"
 
 export RELEASE_DESCRIPTION="${tag}"
 
