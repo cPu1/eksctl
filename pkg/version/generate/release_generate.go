@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -33,8 +34,26 @@ func main() {
 		newVersion, newPreRelease = prepareRelease()
 	case "release-candidate":
 		newVersion, newPreRelease = prepareReleaseCandidate()
+	case "release-id":
+		// TODO
+		fmt.Println("")
+		return
+	case "pre-release-id":
+		_, id := prepareReleaseCandidate()
+		fmt.Println(id)
+		return
 	case "development":
 		newVersion, newPreRelease = nextDevelopmentIteration()
+	case "next-pre-release-id":
+		if len(os.Args) != 3 {
+			log.Fatalf("usage: release_generate %s <rc-version>", command)
+		}
+		next, err := nextPreReleaseID(os.Args[2])
+		if err != nil {
+			log.Fatalf("error generating next pre-release ID: %v", err)
+		}
+		fmt.Println(next)
+		return
 	case "full-version":
 		fmt.Println(version.GetVersion())
 		return
@@ -62,6 +81,7 @@ func prepareRelease() (string, string) {
 	return version.Version, ""
 }
 
+// TODO accept the PR ID as an argument.
 func prepareReleaseCandidate() (string, string) {
 	if strings.HasPrefix(version.PreReleaseID, "rc.") {
 		// Next RC
@@ -73,6 +93,38 @@ func prepareReleaseCandidate() (string, string) {
 		return version.Version, fmt.Sprintf("rc.%d", newRC)
 	}
 	return version.Version, defaultReleaseCandidate
+}
+
+func nextPreReleaseID(latestPreReleaseVersion string) (string, error) {
+	if latestPreReleaseVersion == "" {
+		return defaultReleaseCandidate, nil
+	}
+
+	ver, err := semver.Parse(latestPreReleaseVersion)
+	if err != nil {
+		return "", fmt.Errorf("invalid pre-release version: %w", err)
+	}
+	currentVersion, err := semver.Parse(version.Version)
+	if err != nil {
+		return "", fmt.Errorf("unexpected error parsing current version: %s: %w", version.Version, err)
+	}
+
+	verWithoutPre := ver
+	verWithoutPre.Pre = nil
+	if verWithoutPre.LT(currentVersion) || len(ver.Pre) == 0 {
+		return defaultReleaseCandidate, nil
+	}
+
+	if len(ver.Pre) != 2 {
+		return "", errors.New("unexpected format for PR version")
+	}
+	id := ver.Pre[1]
+	if !id.IsNumeric() {
+		return "", fmt.Errorf("expected PR version to be numeric; got %q", id.String())
+	}
+
+	return fmt.Sprintf("rc.%d", id.VersionNum+1), nil
+
 }
 
 func printMajorMinor() string {
