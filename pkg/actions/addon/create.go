@@ -3,7 +3,6 @@ package addon
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,6 +16,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/weaveworks/eksctl/pkg/addons"
 	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
 	"github.com/weaveworks/eksctl/pkg/cfn/builder"
 )
@@ -26,6 +26,11 @@ const (
 )
 
 func (a *Manager) Create(ctx context.Context, addon *api.Addon, waitTimeout time.Duration) error {
+	addonConfig := getAddonConfig(addon)
+	if addonConfig != nil && !addonConfig.AWSManaged {
+		return a.createSelfManagedAddon(ctx, addon, addonConfig)
+	}
+
 	// First check if the addon is already present as an EKS managed addon
 	// in a state different from CREATE_FAILED, and if so, don't re-create
 	var notFoundErr *ekstypes.ResourceNotFoundException
@@ -65,73 +70,30 @@ func (a *Manager) Create(ctx context.Context, addon *api.Addon, waitTimeout time
 
 	if addon.Force {
 		createAddonInput.ResolveConflicts = ekstypes.ResolveConflictsOverwrite
-	} else {
-		addonName := strings.ToLower(addon.Name)
-		if addonName == "coredns" || addonName == "kube-proxy" || addonName == "vpc-cni" {
-			logger.Info("when creating an addon to replace an existing application, e.g. CoreDNS, kube-proxy & VPC-CNI the --force flag will ensure the currently deployed configuration is replaced")
-		}
+	} else if addonConfig.CoreAddon {
+		logger.Info("when creating an addon to replace an existing application, e.g., CoreDNS, kube-proxy & VPC-CNI, the --force flag will ensure the currently deployed configuration is replaced")
 	}
 
 	logger.Debug("resolve conflicts set to %s", createAddonInput.ResolveConflicts)
-	logger.Debug("addon: %v", addon)
-	namespace, serviceAccount := a.getKnownServiceAccountLocation(addon)
+	logger.Debug("addon: %+v", addon)
 
 	if len(addon.Tags) > 0 {
 		createAddonInput.Tags = addon.Tags
 	}
-	if a.withOIDC {
-		if addon.ServiceAccountRoleARN != "" {
-			logger.Info("using provided ServiceAccountRoleARN %q", addon.ServiceAccountRoleARN)
-			createAddonInput.ServiceAccountRoleArn = &addon.ServiceAccountRoleARN
-		} else if hasPoliciesSet(addon) {
-			outputRole, err := a.createRole(ctx, addon, namespace, serviceAccount)
-			if err != nil {
-				return err
-			}
-			createAddonInput.ServiceAccountRoleArn = &outputRole
-		} else {
-			policyDocument, policyARNs, wellKnownPolicies := a.getRecommendedPolicies(addon)
-			if len(policyARNs) != 0 || policyDocument != nil || wellKnownPolicies != nil {
-				logger.Info("creating role using recommended policies")
-				addon.AttachPolicyARNs = policyARNs
-				addon.AttachPolicy = policyDocument
-				resourceSet := builder.NewIAMRoleResourceSetWithAttachPolicy(addon.Name, namespace, serviceAccount, addon.PermissionsBoundary, addon.AttachPolicy, a.oidcManager)
-				if len(policyARNs) != 0 {
-					resourceSet = builder.NewIAMRoleResourceSetWithAttachPolicyARNs(addon.Name, namespace, serviceAccount, addon.PermissionsBoundary, addon.AttachPolicyARNs, a.oidcManager)
-				}
-				if wellKnownPolicies != nil {
-					addon.WellKnownPolicies = *wellKnownPolicies
-					resourceSet = builder.NewIAMRoleResourceSetWithWellKnownPolicies(addon.Name, namespace, serviceAccount, addon.PermissionsBoundary, addon.WellKnownPolicies, a.oidcManager)
-				}
-				if err := resourceSet.AddAllResources(); err != nil {
-					return err
-				}
-				err := a.createStack(ctx, resourceSet, addon)
-				if err != nil {
-					return err
-				}
-				createAddonInput.ServiceAccountRoleArn = &resourceSet.OutputRole
-			} else {
-				logger.Info("no recommended policies found, proceeding without any IAM")
-			}
-		}
-	} else {
-		//if any sort of policy is set or could be set, log a warning
-		policyDocument, policyARNs, wellKnownPolicies := a.getRecommendedPolicies(addon)
-		if addon.ServiceAccountRoleARN != "" || hasPoliciesSet(addon) || len(policyARNs) != 0 || policyDocument != nil || wellKnownPolicies != nil {
-			logger.Warning("OIDC is disabled but policies are required/specified for this addon. Users are responsible for attaching the policies to all nodegroup roles")
-		}
+	serviceAccountRole, err := a.makeServiceAccountRole(ctx, addon, addonConfig)
+	if err != nil {
+		return fmt.Errorf("error creating service account role: %w", err)
+	}
+	if serviceAccountRole != "" {
+		createAddonInput.ServiceAccountRoleArn = &serviceAccountRole
 	}
 
-	if addon.CanonicalName() == api.VPCCNIAddon {
+	if addonConfig.Name == api.VPCCNIAddon {
 		logger.Debug("patching AWS node")
-		err := a.patchAWSNodeSA(ctx)
-		if err != nil {
+		if err := a.patchAWSNodeSA(ctx); err != nil {
 			return err
 		}
-
-		err = a.patchAWSNodeDaemonSet(ctx)
-		if err != nil {
+		if err := a.patchAWSNodeDaemonSet(ctx); err != nil {
 			return err
 		}
 	}
@@ -139,7 +101,7 @@ func (a *Manager) Create(ctx context.Context, addon *api.Addon, waitTimeout time
 	logger.Info("creating addon")
 	output, err := a.eksAPI.CreateAddon(ctx, createAddonInput)
 	if err != nil {
-		return errors.Wrapf(err, "failed to create addon %q", addon.Name)
+		return fmt.Errorf("failed to create addon %q: %w", addon.Name, err)
 	}
 
 	if output != nil {
@@ -153,6 +115,72 @@ func (a *Manager) Create(ctx context.Context, addon *api.Addon, waitTimeout time
 	return nil
 }
 
+func (a *Manager) makeServiceAccountRole(ctx context.Context, addon *api.Addon, addonConfig *AddonConfig) (string, error) {
+	if !a.withOIDC {
+		if addonConfig.SetRecommendedPolicies != nil {
+			logger.Warning("OIDC is disabled but policies are required/specified for this addon. Users are responsible for attaching the policies to all nodegroup roles")
+		}
+		return "", nil
+	}
+
+	if addon.ServiceAccountRoleARN != "" {
+		logger.Info("using provided ServiceAccountRoleARN %q", addon.ServiceAccountRoleARN)
+		return addon.ServiceAccountRoleARN, nil
+	}
+
+	serviceAccountMeta := addonConfig.KnownServiceAccountMeta
+	if serviceAccountMeta != nil {
+		logger.Debug("found known service account location %s/%s", serviceAccountMeta.Name, serviceAccountMeta.Namespace)
+	} else {
+		serviceAccountMeta = &api.ClusterIAMMeta{}
+	}
+	if hasPoliciesSet(addon) {
+		return a.createRole(ctx, addon, serviceAccountMeta.Namespace, serviceAccountMeta.Name)
+	}
+
+	if addonConfig.SetRecommendedPolicies != nil {
+		logger.Info("creating role using recommended policies")
+		if err := addonConfig.SetRecommendedPolicies(addon, a.clusterConfig); err != nil {
+			return "", fmt.Errorf("error setting recommended policies: %w", err)
+		}
+		resourceSet := builder.NewIAMRoleResourceSet(addon.Name, serviceAccountMeta.Name, serviceAccountMeta.Namespace, a.oidcManager, addon.AddonPolicyConfig)
+		if err := resourceSet.AddAllResources(); err != nil {
+			return "", err
+		}
+		if err := a.createStack(ctx, resourceSet, addon); err != nil {
+			return "", err
+		}
+		return resourceSet.OutputRole, nil
+	}
+
+	logger.Info("no recommended policies found, proceeding without any IAM")
+	return "", nil
+}
+
+func (a *Manager) createSelfManagedAddon(ctx context.Context, addon *api.Addon, addonConfig *AddonConfig) error {
+	serviceAccountRole, err := a.makeServiceAccountRole(ctx, addon, addonConfig)
+	if err != nil {
+		return fmt.Errorf("error creating service account role: %w", err)
+	}
+
+	cilium := &addons.Cilium{
+		KubernetesProvider:    a.kubeProvider,
+		ClusterInfo:           a.clusterConfig,
+		ServiceAccountRoleARN: serviceAccountRole,
+	}
+	return cilium.Install(ctx, addon.Config)
+}
+
+func getAddonConfig(a *api.Addon) *AddonConfig {
+	canonicalName := a.CanonicalName()
+	for _, ac := range addonsConfig {
+		if ac.Name == canonicalName {
+			return &ac
+		}
+	}
+	return nil
+}
+
 func (a *Manager) patchAWSNodeSA(ctx context.Context) error {
 	serviceAccounts := a.clientSet.CoreV1().ServiceAccounts("kube-system")
 	sa, err := serviceAccounts.Get(ctx, "aws-node", metav1.GetOptions{})
@@ -163,22 +191,16 @@ func (a *Manager) patchAWSNodeSA(ctx context.Context) error {
 		}
 		return err
 	}
-	var managerIndex = -1
 	for i, managedFields := range sa.ManagedFields {
-		if managedFields.Manager == "eksctl" {
-			managerIndex = i
+		if managedFields.Manager == api.AddonManagerEksctl {
+			_, err = serviceAccounts.Patch(ctx, "aws-node", types.JSONPatchType, []byte(fmt.Sprintf(`[{"op": "remove", "path": "/metadata/managedFields/%d"}]`, i)), metav1.PatchOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to patch sa: %w", err)
+			}
+			return nil
 		}
 	}
-	if managerIndex == -1 {
-		logger.Debug("no 'eksctl' managed field found")
-		return nil
-	}
-
-	_, err = serviceAccounts.Patch(ctx, "aws-node", types.JSONPatchType, []byte(fmt.Sprintf(`[{"op": "remove", "path": "/metadata/managedFields/%d"}]`, managerIndex)), metav1.PatchOptions{})
-	if err != nil {
-		return errors.Wrap(err, "failed to patch sa")
-	}
-
+	logger.Debug("no managed field found for eksctl")
 	return nil
 }
 
@@ -194,8 +216,9 @@ func (a *Manager) patchAWSNodeDaemonSet(ctx context.Context) error {
 	}
 	var managerIndex = -1
 	for i, managedFields := range sa.ManagedFields {
-		if managedFields.Manager == "eksctl" {
+		if managedFields.Manager == api.AddonManagerEksctl {
 			managerIndex = i
+			break
 		}
 	}
 	if managerIndex == -1 {
@@ -225,7 +248,7 @@ func (a *Manager) patchAWSNodeDaemonSet(ctx context.Context) error {
 }
 `), metav1.PatchOptions{})
 		if err != nil {
-			return errors.Wrap(err, "failed to patch daemon set")
+			return fmt.Errorf("failed to patch daemon set: %w", err)
 		}
 		// update the daemonset so the next patch can work.
 		_, err = daemonSets.Get(ctx, "aws-node", metav1.GetOptions{})
@@ -240,27 +263,9 @@ func (a *Manager) patchAWSNodeDaemonSet(ctx context.Context) error {
 
 	_, err = daemonSets.Patch(ctx, "aws-node", types.JSONPatchType, []byte(fmt.Sprintf(`[{"op": "remove", "path": "/metadata/managedFields/%d"}]`, managerIndex)), metav1.PatchOptions{})
 	if err != nil {
-		return errors.Wrap(err, "failed to patch daemon set")
+		return fmt.Errorf("failed to patch daemon set: %w", err)
 	}
-
 	return nil
-}
-
-func (a *Manager) getRecommendedPolicies(addon *api.Addon) (api.InlineDocument, []string, *api.WellKnownPolicies) {
-	// API isn't case-sensitive
-	switch addon.CanonicalName() {
-	case api.VPCCNIAddon:
-		if a.clusterConfig.IPv6Enabled() {
-			return makeIPv6VPCCNIPolicyDocument(api.Partition(a.clusterConfig.Metadata.Region)), nil, nil
-		}
-		return nil, []string{fmt.Sprintf("arn:%s:iam::aws:policy/%s", api.Partition(a.clusterConfig.Metadata.Region), api.IAMPolicyAmazonEKSCNIPolicy)}, nil
-	case api.AWSEBSCSIDriverAddon:
-		return nil, nil, &api.WellKnownPolicies{
-			EBSCSIController: true,
-		}
-	default:
-		return nil, nil, nil
-	}
 }
 
 func (a *Manager) getKnownServiceAccountLocation(addon *api.Addon) (string, string) {
@@ -279,32 +284,14 @@ func hasPoliciesSet(addon *api.Addon) bool {
 }
 
 func (a *Manager) createRole(ctx context.Context, addon *api.Addon, namespace, serviceAccount string) (string, error) {
-	resourceSet, err := a.createRoleResourceSet(addon, namespace, serviceAccount)
-
-	if err != nil {
-		return "", err
+	resourceSet := builder.NewIAMRoleResourceSet(addon.Name, namespace, serviceAccount, a.oidcManager, addon.AddonPolicyConfig)
+	if err := resourceSet.AddAllResources(); err != nil {
+		return "", fmt.Errorf("error adding resources: %w", err)
 	}
-
-	err = a.createStack(ctx, resourceSet, addon)
-	if err != nil {
+	if err := a.createStack(ctx, resourceSet, addon); err != nil {
 		return "", err
 	}
 	return resourceSet.OutputRole, nil
-}
-
-func (a *Manager) createRoleResourceSet(addon *api.Addon, namespace, serviceAccount string) (*builder.IAMRoleResourceSet, error) {
-	var resourceSet *builder.IAMRoleResourceSet
-	if len(addon.AttachPolicyARNs) != 0 {
-		logger.Info("creating role using provided policies ARNs")
-		resourceSet = builder.NewIAMRoleResourceSetWithAttachPolicyARNs(addon.Name, namespace, serviceAccount, addon.PermissionsBoundary, addon.AttachPolicyARNs, a.oidcManager)
-	} else if addon.WellKnownPolicies.HasPolicy() {
-		logger.Info("creating role using provided well known policies")
-		resourceSet = builder.NewIAMRoleResourceSetWithWellKnownPolicies(addon.Name, namespace, serviceAccount, addon.PermissionsBoundary, addon.WellKnownPolicies, a.oidcManager)
-	} else {
-		logger.Info("creating role using provided policies")
-		resourceSet = builder.NewIAMRoleResourceSetWithAttachPolicy(addon.Name, namespace, serviceAccount, addon.PermissionsBoundary, addon.AttachPolicy, a.oidcManager)
-	}
-	return resourceSet, resourceSet.AddAllResources()
 }
 
 func (a *Manager) createStack(ctx context.Context, resourceSet builder.ResourceSetReader, addon *api.Addon) error {

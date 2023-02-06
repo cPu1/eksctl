@@ -87,7 +87,11 @@ func createAddonCmd(cmd *cmdutils.Cmd) {
 			return err
 		}
 
-		addonManager, err := addon.New(cmd.ClusterConfig, clusterProvider.AWSProvider.EKS(), stackManager, oidcProviderExists, oidc, clientSet)
+		kubeProvider, err := clusterProvider.NewClient(cmd.ClusterConfig)
+		if err != nil {
+			return err
+		}
+		addonManager, err := addon.New(cmd.ClusterConfig, clusterProvider.AWSProvider.EKS(), stackManager, oidcProviderExists, oidc, clientSet, kubeProvider)
 		if err != nil {
 			return err
 		}

@@ -393,6 +393,9 @@ const (
 	KubeProxyAddon              = "kube-proxy"
 	CoreDNSAddon                = "coredns"
 	AWSEBSCSIDriverAddon        = "aws-ebs-csi-driver"
+	CiliumAddon                 = "cilium"
+
+	AddonManagerEksctl = "eksctl"
 )
 
 // supported version of Karpenter
@@ -1006,8 +1009,14 @@ func (c *ClusterConfig) AppendAvailabilityZone(newAZ string) {
 	c.AvailabilityZones = append(c.AvailabilityZones, newAZ)
 }
 
+// IPv6Enabled reports whether IPv6 is enabled for the cluster.
 func (c *ClusterConfig) IPv6Enabled() bool {
 	return c.KubernetesNetworkConfig != nil && c.KubernetesNetworkConfig.IPv6Enabled()
+}
+
+// GetRegion returns the region.
+func (c *ClusterConfig) GetRegion() string {
+	return c.Metadata.Region
 }
 
 // SetClusterState updates the cluster state and populates the ClusterStatus using *eks.Cluster.

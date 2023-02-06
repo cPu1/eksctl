@@ -68,6 +68,7 @@ type KubernetesProvider struct {
 //
 //go:generate counterfeiter -o fakes/fake_kube_provider.go . KubeProvider
 type KubeProvider interface {
+	NewClient(clusterInfo kubeconfig.ClusterInfo) (*Client, error)
 	NewRawClient(clusterInfo kubeconfig.ClusterInfo) (*kubernetes.RawClient, error)
 	NewStdClientSet(clusterInfo kubeconfig.ClusterInfo) (k8sclient.Interface, error)
 	ServerVersion(rawClient *kubernetes.RawClient) (string, error)

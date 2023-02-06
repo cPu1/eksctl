@@ -15,6 +15,9 @@ type WellKnownPolicies struct {
 	// See [external-dns
 	// docs](https://github.com/kubernetes-sigs/external-dns/blob/master/docs/tutorials/aws.md).
 	ExternalDNS bool `json:"externalDNS,inline"`
+	// TODO: unimplemented.
+	//CiliumENI adds the policies for Cilium.
+	//CiliumENI bool `json:"ciliumENI,inline"`
 	// CertManager adds cert-manager policies. See [cert-manager
 	// docs](https://cert-manager.io/docs/configuration/acme/dns01/route53).
 	CertManager bool `json:"certManager,inline"`
@@ -29,5 +32,5 @@ type WellKnownPolicies struct {
 }
 
 func (p *WellKnownPolicies) HasPolicy() bool {
-	return p.ImageBuilder || p.AutoScaler || p.AWSLoadBalancerController || p.ExternalDNS || p.CertManager || p.EBSCSIController || p.EFSCSIController
+	return *p != (WellKnownPolicies{})
 }

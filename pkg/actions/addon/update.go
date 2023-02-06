@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/weaveworks/eksctl/pkg/cfn/builder"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	ekstypes "github.com/aws/aws-sdk-go-v2/service/eks/types"
@@ -100,13 +102,15 @@ func (a *Manager) updateWithNewPolicies(ctx context.Context, addon *api.Addon) (
 		}
 	}
 
-	namespace, serviceAccount := a.getKnownServiceAccountLocation(addon)
-
+	serviceAccountMeta := getAddonConfig(addon).KnownServiceAccountMeta
+	if serviceAccountMeta == nil {
+		serviceAccountMeta = &api.ClusterIAMMeta{}
+	}
 	if stack == nil {
-		return a.createRole(ctx, addon, namespace, serviceAccount)
+		return a.createRole(ctx, addon, serviceAccountMeta.Namespace, serviceAccountMeta.Name)
 	}
 
-	createNewTemplate, err := a.createNewTemplate(addon, namespace, serviceAccount)
+	createNewTemplate, err := a.createNewTemplate(addon, serviceAccountMeta.Namespace, serviceAccountMeta.Name)
 	if err != nil {
 		return "", err
 	}
@@ -130,9 +134,9 @@ func (a *Manager) updateWithNewPolicies(ctx context.Context, addon *api.Addon) (
 }
 
 func (a *Manager) createNewTemplate(addon *api.Addon, namespace, serviceAccount string) ([]byte, error) {
-	resourceSet, err := a.createRoleResourceSet(addon, namespace, serviceAccount)
-	if err != nil {
-		return nil, err
+	resourceSet := builder.NewIAMRoleResourceSet(addon.Name, namespace, serviceAccount, a.oidcManager, addon.AddonPolicyConfig)
+	if err := resourceSet.AddAllResources(); err != nil {
+		return nil, fmt.Errorf("error adding resources: %w", err)
 	}
 	return resourceSet.RenderJSON()
 }

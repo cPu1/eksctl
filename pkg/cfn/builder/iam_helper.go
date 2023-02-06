@@ -5,12 +5,13 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
-	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
-	cft "github.com/weaveworks/eksctl/pkg/cfn/template"
 	gfn "github.com/weaveworks/goformation/v4/cloudformation"
 	gfniam "github.com/weaveworks/goformation/v4/cloudformation/iam"
 	gfnt "github.com/weaveworks/goformation/v4/cloudformation/types"
 	"k8s.io/apimachinery/pkg/util/sets"
+
+	api "github.com/weaveworks/eksctl/pkg/apis/eksctl.io/v1alpha5"
+	cft "github.com/weaveworks/eksctl/pkg/cfn/template"
 )
 
 type cfnTemplate interface {
@@ -54,6 +55,12 @@ func createWellKnownPolicies(wellKnownPolicies api.WellKnownPolicies) ([]managed
 			}...,
 		)
 	}
+	// TODO: add policy statements for Cilium.
+	/*if wellKnownPolicies.CiliumENI {
+		customPolicies = append(customPolicies, customPolicyForRole{
+			Name: "PolicyCiliumENI",
+		})
+	}*/
 	if wellKnownPolicies.CertManager {
 		customPolicies = append(customPolicies,
 			[]customPolicyForRole{
