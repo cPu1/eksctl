@@ -83,6 +83,16 @@ func (c *Client) NewClientSet() (*kubernetes.Clientset, error) {
 	return client, nil
 }
 
+// RawConfig returns the REST client config.
+func (c *Client) RawConfig() *restclient.Config {
+	return c.rawConfig
+}
+
+// GetConfig returns the config needed to connect to a Kubernetes cluster.
+func (c *Client) GetConfig() clientcmdapi.Config {
+	return *c.Config
+}
+
 // NewStdClientSet creates a new API client.
 func (c *KubernetesProvider) NewStdClientSet(clusterInfo kubeconfig.ClusterInfo) (kubernetes.Interface, error) {
 	_, clientSet, err := c.newClientSet(clusterInfo)

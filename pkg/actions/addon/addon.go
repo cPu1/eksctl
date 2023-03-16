@@ -3,11 +3,13 @@ package addon
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/eks"
+	"github.com/weaveworks/eksctl/pkg/eks"
+
+	awseks "github.com/aws/aws-sdk-go-v2/service/eks"
+
 	"github.com/hashicorp/go-version"
 	"github.com/kris-nova/logger"
 	kubeclient "k8s.io/client-go/kubernetes"
@@ -25,9 +27,10 @@ type Manager struct {
 	oidcManager   *iamoidc.OpenIDConnectManager
 	stackManager  manager.StackManager
 	clientSet     kubeclient.Interface
+	kubeProvider  *eks.Client
 }
 
-func New(clusterConfig *api.ClusterConfig, eksAPI awsapi.EKS, stackManager manager.StackManager, withOIDC bool, oidcManager *iamoidc.OpenIDConnectManager, clientSet kubeclient.Interface) (*Manager, error) {
+func New(clusterConfig *api.ClusterConfig, eksAPI awsapi.EKS, stackManager manager.StackManager, withOIDC bool, oidcManager *iamoidc.OpenIDConnectManager, clientSet kubeclient.Interface, kubeProvider *eks.Client) (*Manager, error) {
 	return &Manager{
 		clusterConfig: clusterConfig,
 		eksAPI:        eksAPI,
@@ -35,6 +38,7 @@ func New(clusterConfig *api.ClusterConfig, eksAPI awsapi.EKS, stackManager manag
 		oidcManager:   oidcManager,
 		stackManager:  stackManager,
 		clientSet:     clientSet,
+		kubeProvider:  kubeProvider,
 	}, nil
 }
 
@@ -44,8 +48,8 @@ func (a *Manager) waitForAddonToBeActive(ctx context.Context, addon *api.Addon, 
 	if (addon.Name == api.CoreDNSAddon || addon.Name == api.AWSEBSCSIDriverAddon) && !a.clusterConfig.HasNodes() {
 		return nil
 	}
-	activeWaiter := eks.NewAddonActiveWaiter(a.eksAPI)
-	input := &eks.DescribeAddonInput{
+	activeWaiter := awseks.NewAddonActiveWaiter(a.eksAPI)
+	input := &awseks.DescribeAddonInput{
 		ClusterName: &a.clusterConfig.Metadata.Name,
 		AddonName:   &addon.Name,
 	}
@@ -97,10 +101,13 @@ func (a *Manager) getLatestMatchingVersion(ctx context.Context, addon *api.Addon
 		return "", fmt.Errorf("no version(s) found matching %q for %q", addonVersion, addon.Name)
 	}
 
-	sort.SliceStable(versions, func(i, j int) bool {
-		return versions[j].LessThan(versions[i])
-	})
-	return versions[0].Original(), nil
+	latestVersion := versions[0]
+	for _, v := range versions[1:] {
+		if latestVersion.LessThan(v) {
+			latestVersion = v
+		}
+	}
+	return latestVersion.Original(), nil
 }
 
 func (a *Manager) makeAddonName(name string) string {

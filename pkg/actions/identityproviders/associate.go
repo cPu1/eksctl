@@ -28,7 +28,7 @@ func (m *Manager) Associate(ctx context.Context, options AssociateIdentityProvid
 	for _, generalIDP := range options.Providers {
 		switch idP := (generalIDP.Inner).(type) {
 		case *api.OIDCIdentityProvider:
-			taskTree.Append(&tasks.GenericTask{
+			taskTree.Append(&tasks.Generic{
 				Description: fmt.Sprintf("associate %s", idP.Name),
 				Doer: func() error {
 					update, err := m.associateOIDC(ctx, *idP)

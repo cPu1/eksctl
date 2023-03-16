@@ -1,0 +1,18 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: cilium
+  region: eu-west-2
+
+iam:
+  withOIDC: true
+
+managedNodeGroups:
+  - name: worker
+    desiredCapacity: 1
+
+addons:
+  - name: cilium
+    config:
+      rbac:
+        create: true

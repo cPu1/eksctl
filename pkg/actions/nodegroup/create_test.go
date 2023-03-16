@@ -422,7 +422,7 @@ var _ = DescribeTable("Create", func(t ngEntry) {
 	}),
 )
 
-var noopTask = &tasks.GenericTask{
+var noopTask = &tasks.Generic{
 	Doer: func() error {
 		return nil
 	},

@@ -16,17 +16,9 @@ type Addon struct {
 	Version string `json:"version,omitempty"`
 	// +optional
 	ServiceAccountRoleARN string `json:"serviceAccountRoleARN,omitempty"`
-	// list of ARNs of the IAM policies to attach
-	// +optional
-	AttachPolicyARNs []string `json:"attachPolicyARNs,omitempty"`
-	// AttachPolicy holds a policy document to attach
-	// +optional
-	AttachPolicy InlineDocument `json:"attachPolicy,omitempty"`
-	// ARN of the permissions' boundary to associate
-	// +optional
-	PermissionsBoundary string `json:"permissionsBoundary,omitempty"`
-	// WellKnownPolicies for attaching common IAM policies
-	WellKnownPolicies WellKnownPolicies `json:"wellKnownPolicies,omitempty"`
+
+	AddonPolicyConfig `json:"inline"`
+
 	// The metadata to apply to the cluster to assist with categorization and organization.
 	// Each tag consists of a key and an optional value, both of which you define.
 	// +optional
@@ -38,6 +30,8 @@ type Addon struct {
 	// For now, all properties will be specified as a JSON string
 	// and have to respect the schema from DescribeAddonConfiguration.
 	// +optional
+	// TODO: make ConfigurationValues accept either a map[string]interface{} or a JSON-encoded string.
+	// This would eliminate the need to use the Config field.
 	ConfigurationValues string `json:"configurationValues,omitempty"`
 	// Force overwrites an existing self-managed add-on with an EKS managed add-on.
 	// Force is intended to be used when migrating an existing self-managed add-on to an EKS managed add-on.
@@ -48,6 +42,26 @@ type Addon struct {
 	Types []string `json:"types,omitempty"`
 	// +optional
 	Owners []string `json:"owners,omitempty"`
+
+	// +optional
+	// Only Cilium accepts a config currently.
+	Config map[string]interface{} `json:"config,omitempty"`
+}
+
+// AddonPolicyConfig represents the policy configuration for an addon.
+type AddonPolicyConfig struct {
+	// AttachPolicyARNs is a list of ARNs of the IAM policies to attach.
+	// +optional
+	AttachPolicyARNs []string `json:"attachPolicyARNs,omitempty"`
+	// AttachPolicy holds a policy document to attach.
+	// +optional
+	AttachPolicy InlineDocument `json:"attachPolicy,omitempty"`
+	// PermissionsBoundary is the ARN of the permissions' boundary to associate
+	// +optional
+	PermissionsBoundary string `json:"permissionsBoundary,omitempty"`
+	// WellKnownPolicies allows attaching common IAM policies.
+	// +optional
+	WellKnownPolicies WellKnownPolicies `json:"wellKnownPolicies,omitempty"`
 }
 
 func (a Addon) CanonicalName() string {

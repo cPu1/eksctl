@@ -228,7 +228,7 @@ func (c *ClusterProvider) CreateExtraClusterConfigTasks(ctx context.Context, cfg
 		IsSubTask: true,
 	}
 
-	newTasks.Append(&tasks.GenericTask{
+	newTasks.Append(&tasks.Generic{
 		Description: "wait for control plane to become ready",
 		Doer: func() error {
 			clientSet, err := c.NewRawClient(cfg)
@@ -286,7 +286,7 @@ func (c *ClusterProvider) CreateExtraClusterConfigTasks(ctx context.Context, cfg
 	}
 
 	if len(cfg.IAMIdentityMappings) > 0 {
-		newTasks.Append(&tasks.GenericTask{
+		newTasks.Append(&tasks.Generic{
 			Description: "create IAM identity mappings",
 			Doer: func() error {
 				clientSet, err := c.NewStdClientSet(cfg)

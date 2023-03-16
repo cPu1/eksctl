@@ -32,7 +32,7 @@ func (m *Manager) Disassociate(ctx context.Context, options DisassociateIdentity
 	}
 
 	for _, idP := range options.Providers {
-		taskTree.Append(&tasks.GenericTask{
+		taskTree.Append(&tasks.Generic{
 			Description: fmt.Sprintf("disassociate %s", idP.Name),
 			Doer: func() error {
 				idPConfig := ekstypes.IdentityProviderConfig{

@@ -108,7 +108,7 @@ var _ = Describe("Delete", func() {
 			p.MockCloudFormation().On("DeleteStack", mock.Anything).Return(nil, nil)
 
 			fakeStackManager.DeleteTasksForDeprecatedStacksReturns(&tasks.TaskTree{
-				Tasks: []tasks.Task{&tasks.GenericTask{Doer: func() error {
+				Tasks: []tasks.Task{&tasks.Generic{Doer: func() error {
 					ranDeleteDeprecatedTasks = true
 					return nil
 				}}},
@@ -129,7 +129,7 @@ var _ = Describe("Delete", func() {
 
 			var deleteCallCount int
 			fakeStackManager.NewTasksToDeleteNodeGroupsReturns(&tasks.TaskTree{
-				Tasks: []tasks.Task{&tasks.GenericTask{Doer: func() error {
+				Tasks: []tasks.Task{&tasks.Generic{Doer: func() error {
 					deleteCallCount++
 					return nil
 				}}},
@@ -137,7 +137,7 @@ var _ = Describe("Delete", func() {
 
 			var unownedDeleteCallCount int
 			fakeStackManager.NewTaskToDeleteUnownedNodeGroupReturns(&tasks.TaskTree{
-				Tasks: []tasks.Task{&tasks.GenericTask{Doer: func() error {
+				Tasks: []tasks.Task{&tasks.Generic{Doer: func() error {
 					unownedDeleteCallCount++
 					return nil
 				}}},
@@ -383,7 +383,7 @@ var _ = Describe("Delete", func() {
 			}, nil)
 
 			fakeStackManager.DeleteTasksForDeprecatedStacksReturns(&tasks.TaskTree{
-				Tasks: []tasks.Task{&tasks.GenericTask{Doer: func() error {
+				Tasks: []tasks.Task{&tasks.Generic{Doer: func() error {
 					ranDeleteDeprecatedTasks = true
 					return nil
 				}}},
@@ -401,7 +401,7 @@ var _ = Describe("Delete", func() {
 
 			var deleteCallCount int
 			fakeStackManager.NewTasksToDeleteNodeGroupsReturns(&tasks.TaskTree{
-				Tasks: []tasks.Task{&tasks.GenericTask{Doer: func() error {
+				Tasks: []tasks.Task{&tasks.Generic{Doer: func() error {
 					deleteCallCount++
 					return nil
 				}}},
@@ -409,7 +409,7 @@ var _ = Describe("Delete", func() {
 
 			var unownedDeleteCallCount int
 			fakeStackManager.NewTaskToDeleteUnownedNodeGroupReturns(&tasks.TaskTree{
-				Tasks: []tasks.Task{&tasks.GenericTask{Doer: func() error {
+				Tasks: []tasks.Task{&tasks.Generic{Doer: func() error {
 					unownedDeleteCallCount++
 					return nil
 				}}},

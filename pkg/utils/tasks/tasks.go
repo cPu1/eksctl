@@ -14,15 +14,19 @@ type Task interface {
 	Do(chan error) error
 }
 
-type GenericTask struct {
+// Generic is a generic task.
+type Generic struct {
 	Description string
 	Doer        func() error
 }
 
-func (t *GenericTask) Describe() string {
+// Describe returns the task description.
+func (t *Generic) Describe() string {
 	return t.Description
 }
-func (t *GenericTask) Do(errCh chan error) error {
+
+// Do runs the task.
+func (t *Generic) Do(errCh chan error) error {
 	close(errCh)
 	return t.Doer()
 }

@@ -89,7 +89,7 @@ var _ = Describe("Delete", func() {
 			}).Once().Return(&awseks.ListFargateProfilesOutput{}, nil)
 
 			fakeStackManager.DeleteTasksForDeprecatedStacksReturns(&tasks.TaskTree{
-				Tasks: []tasks.Task{&tasks.GenericTask{Doer: func() error {
+				Tasks: []tasks.Task{&tasks.Generic{Doer: func() error {
 					ranDeleteDeprecatedTasks = true
 					return nil
 				}}},
@@ -100,7 +100,7 @@ var _ = Describe("Delete", func() {
 			p.MockEC2().On("DescribeSecurityGroups", mock.Anything, mock.Anything).Return(&ec2.DescribeSecurityGroupsOutput{}, nil)
 
 			fakeStackManager.NewTasksToDeleteClusterWithNodeGroupsReturns(&tasks.TaskTree{
-				Tasks: []tasks.Task{&tasks.GenericTask{Doer: func() error {
+				Tasks: []tasks.Task{&tasks.Generic{Doer: func() error {
 					ranDeleteClusterTasks = true
 					return nil
 				}}},
@@ -298,7 +298,7 @@ var _ = Describe("Delete", func() {
 			}).Once().Return(&awseks.ListFargateProfilesOutput{FargateProfileNames: []string{}}, nil)
 
 			fakeStackManager.DeleteTasksForDeprecatedStacksReturns(&tasks.TaskTree{
-				Tasks: []tasks.Task{&tasks.GenericTask{Doer: func() error {
+				Tasks: []tasks.Task{&tasks.Generic{Doer: func() error {
 					ranDeleteDeprecatedTasks = true
 					return nil
 				}}},
@@ -309,7 +309,7 @@ var _ = Describe("Delete", func() {
 			p.MockEC2().On("DescribeSecurityGroups", mock.Anything, mock.Anything).Return(&ec2.DescribeSecurityGroupsOutput{}, nil)
 
 			fakeStackManager.NewTasksToDeleteClusterWithNodeGroupsReturns(&tasks.TaskTree{
-				Tasks: []tasks.Task{&tasks.GenericTask{Doer: func() error {
+				Tasks: []tasks.Task{&tasks.Generic{Doer: func() error {
 					ranDeleteClusterTasks = true
 					return nil
 				}}},

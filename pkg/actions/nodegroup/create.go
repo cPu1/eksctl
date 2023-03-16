@@ -185,7 +185,7 @@ func (m *Manager) nodeCreationTasks(ctx context.Context, isOwnedCluster bool) er
 	}
 
 	if isOwnedCluster {
-		taskTree.Append(&tasks.GenericTask{
+		taskTree.Append(&tasks.Generic{
 			Doer: func() error {
 				if err := m.stackManager.FixClusterCompatibility(ctx); err != nil {
 					return err

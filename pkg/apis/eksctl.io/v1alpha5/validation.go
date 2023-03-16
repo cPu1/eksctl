@@ -88,6 +88,10 @@ func ValidateClusterConfig(cfg *ClusterConfig) error {
 		return err
 	}
 
+	if err := validateAddons(cfg.Addons); err != nil {
+		return err
+	}
+
 	// names must be unique across both managed and unmanaged nodegroups
 	ngNames := nameSet{}
 	validateNg := func(ng *NodeGroupBase, path string) error {
@@ -325,7 +329,7 @@ func (c *ClusterConfig) ValidateVPCConfig() error {
 		if IsEnabled(c.VPC.AutoAllocateIPv6) {
 			return fmt.Errorf("auto allocate ipv6 is not supported with IPv6")
 		}
-		if err := c.ipv6CidrsValid(); err != nil {
+		if err := c.ipv6CIDRsValid(); err != nil {
 			return err
 		}
 		if c.VPC.NAT != nil {
@@ -369,6 +373,22 @@ func (c *ClusterConfig) unsupportedVPCCNIAddonVersion() (bool, error) {
 	return false, nil
 }
 
+func validateAddons(addons []*Addon) error {
+	seen := make(map[string]struct{})
+	for _, a := range addons {
+		if _, ok := seen[a.Name]; ok {
+			return fmt.Errorf("addons cannot contain duplicate values; found %s more than once", a.Name)
+		}
+		seen[a.Name] = struct{}{}
+	}
+	if _, ok := seen[VPCCNIAddon]; ok {
+		if _, ok := seen[CiliumAddon]; ok {
+			return fmt.Errorf("only one of %s or %s can be enabled as an addon", VPCCNIAddon, CiliumAddon)
+		}
+	}
+	return nil
+}
+
 func versionLessThan(v1, v2 string) (bool, error) {
 	v1Version, err := parseVersion(v1)
 	if err != nil {
@@ -389,7 +409,7 @@ func parseVersion(v string) (*version.Version, error) {
 	return version, nil
 }
 
-func (c *ClusterConfig) ipv6CidrsValid() error {
+func (c *ClusterConfig) ipv6CIDRsValid() error {
 	if c.VPC.IPv6Cidr == "" && c.VPC.IPv6Pool == "" {
 		return nil
 	}
@@ -400,7 +420,7 @@ func (c *ClusterConfig) ipv6CidrsValid() error {
 		}
 		return nil
 	}
-	return fmt.Errorf("Ipv6Cidr and Ipv6Pool must both be configured to use a custom IPv6 CIDR and address pool")
+	return errors.New("Ipv6Cidr and Ipv6Pool must both be configured to use a custom IPv6 CIDR and address pool")
 }
 
 // addonContainsManagedAddons finds managed addons in the config and returns those it couldn't find.
