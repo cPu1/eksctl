@@ -18,16 +18,26 @@ jobs:
     name: ${{ inputs.isReleaseCandidate && 'prerelease' || 'release' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@4d9e71b726748f254fe64fa44d273194bd18ec91
-        with:
-          tool-cache: false
-          android: false
-          dotnet: false
-          haskell: false
-          large-packages: false
-          docker-images: false
-          swap-storage: false
+    - name: Maximize build space
+      uses: easimon/maximize-build-space@master
+      with:
+        # root-reserve-mb: 512
+        # swap-size-mb: 1024
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
+        remove-docker-images: 'true'
+      # - name: Free Disk Space (Ubuntu)
+      #   uses: jlumbroso/free-disk-space@4d9e71b726748f254fe64fa44d273194bd18ec91
+      #   with:
+      #     tool-cache: false
+      #     android: false
+      #     dotnet: false
+      #     haskell: false
+      #     large-packages: false
+      #     docker-images: false
+      #     swap-storage: false
       - name: Checkout
         uses: actions/checkout@v3
       - name: Cache go-build and mod
