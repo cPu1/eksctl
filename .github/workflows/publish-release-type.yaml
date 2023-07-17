@@ -21,9 +21,9 @@ jobs:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@4d9e71b726748f254fe64fa44d273194bd18ec91
         with:
-          tool-cache: false
+          tool-cache: true
           android: true
-          dotnet: true
+          # dotnet: true
           haskell: true
           large-packages: true
           docker-images: true
