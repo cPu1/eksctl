@@ -21,12 +21,12 @@ jobs:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@4d9e71b726748f254fe64fa44d273194bd18ec91
         with:
-          tool-cache: true
-          android: true
+          tool-cache: false
+          android: false
           dotnet: false
           haskell: false
           large-packages: false
-          docker-images: true
+          docker-images: false
           swap-storage: false
       - name: Checkout
         uses: actions/checkout@v3
