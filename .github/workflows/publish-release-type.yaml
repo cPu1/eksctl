@@ -18,6 +18,16 @@ jobs:
     name: ${{ inputs.isReleaseCandidate && 'prerelease' || 'release' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@4d9e71b726748f254fe64fa44d273194bd18ec91
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
       - name: Checkout
         uses: actions/checkout@v3
       - name: Cache go-build and mod
